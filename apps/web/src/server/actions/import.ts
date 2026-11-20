@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireMember } from "../access";
 import { writeActiveSpaceId } from "../active-space";
 import { getDb } from "../db";
+import { enforceUserRateLimit, RATE_RULES } from "../rate-limit";
 import { type ActionResult, runAction } from "../result";
 import * as service from "../services/import";
 import type { UndoTokenInfo } from "../undo";
@@ -41,6 +42,7 @@ export interface ConfirmImportResult {
 export async function confirmImport(input: ConfirmImportInput): Promise<ActionResult<ConfirmImportResult>> {
   return runAction(confirmImportSchema, input, async (data) => {
     const { user, membership } = await requireMember(data.spaceId, "editor");
+    await enforceUserRateLimit(getDb(), RATE_RULES.importConfirm, user.id);
     const result = await service.confirmImport(
       getDb(),
       { userId: user.id, memberId: membership.memberId },

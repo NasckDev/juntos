@@ -85,9 +85,14 @@ export interface SpaceExport {
   readonly importBatches: readonly (typeof importBatches.$inferSelect)[];
 }
 
+/** Nome que aparece para um convite pendente quando quem baixa não é o dono (o e-mail convidado é do dono). */
+export const PENDING_INVITE_LABEL = "Convite pendente";
+
 /**
- * "Baixar meus dados" (LGPD): tudo o que a pessoa pode ver, de todos os espaços em que participa.
+ * "Baixar meus dados" (LGPD): o que a pessoa pode ver, de todos os espaços em que participa.
  * Itens excluídos (na lixeira do "Desfazer") ficam de fora. Valores seguem em centavos.
+ * Não leva dado de outra pessoa que ela não veria no app: lotes de importação só os criados por ela (o lote em
+ * revisão de outra pessoa guarda a planilha dela) e o e-mail de convites pendentes só para o dono do espaço.
  */
 export async function exportUserData(db: Executor, userId: string, now = new Date()): Promise<UserDataExport> {
   const [profile] = await db.select().from(user).where(eq(user.id, userId));
@@ -122,7 +127,7 @@ export async function exportUserData(db: Executor, userId: string, now = new Dat
       role,
       members: members.map((member) => ({
         id: member.id,
-        name: member.name ?? member.invitedEmail ?? "",
+        name: member.name ?? (role === "owner" ? member.invitedEmail : null) ?? PENDING_INVITE_LABEL,
         role: member.role,
         status: member.status,
       })),
@@ -143,7 +148,10 @@ export async function exportUserData(db: Executor, userId: string, now = new Dat
         .select()
         .from(settlements)
         .where(and(eq(settlements.spaceId, id), isNull(settlements.deletedAt))),
-      importBatches: await db.select().from(importBatches).where(eq(importBatches.spaceId, id)),
+      importBatches: await db
+        .select()
+        .from(importBatches)
+        .where(and(eq(importBatches.spaceId, id), eq(importBatches.createdBy, userId))),
     });
   }
 

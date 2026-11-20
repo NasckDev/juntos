@@ -5,6 +5,7 @@ import { requireUser } from "../access";
 import { getDb } from "../db";
 import { isPushEnabled } from "../env";
 import { removeSubscription, saveSubscription } from "../push";
+import { enforceUserRateLimit, RATE_RULES } from "../rate-limit";
 import { type ActionResult, DomainError, runAction } from "../result";
 import {
   type RemovePushSubscriptionInput,
@@ -20,6 +21,7 @@ export async function savePushSubscription(input: SavePushSubscriptionInput): Pr
   return runAction(savePushSubscriptionSchema, input, async (subscription) => {
     if (!isPushEnabled()) throw new DomainError(PUSH_DISABLED);
     const user = await requireUser();
+    await enforceUserRateLimit(getDb(), RATE_RULES.pushSubscribe, user.id);
     const userAgent = (await headers()).get("user-agent")?.slice(0, 300) ?? null;
     await saveSubscription(getDb(), user.id, subscription, userAgent);
     return { saved: true };

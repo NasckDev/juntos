@@ -10,6 +10,28 @@ export function isPushSupported(): boolean {
   );
 }
 
+/** iPhone ou iPad (o iPadOS se apresenta como Mac, mas tem tela de toque). */
+export function isAppleMobile(): boolean {
+  if (typeof navigator === "undefined") return false;
+  if (/iPad|iPhone|iPod/.test(navigator.userAgent)) return true;
+  return /Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1;
+}
+
+/** O app está aberto pela Tela de Início (modo instalado)? */
+export function isInstalledApp(): boolean {
+  if (typeof window === "undefined") return false;
+  const standalone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return standalone || window.matchMedia?.("(display-mode: standalone)").matches === true;
+}
+
+/**
+ * No iPhone e no iPad, o Safari só entrega Web Push para o app adicionado à Tela de Início: fora dele, o caminho
+ * é instalar, não "navegador sem suporte".
+ */
+export function needsHomeScreenInstall(): boolean {
+  return isAppleMobile() && !isInstalledApp();
+}
+
 /** Chave pública VAPID (base64url) no formato que `pushManager.subscribe` pede. */
 export function urlBase64ToUint8Array(value: string): Uint8Array<ArrayBuffer> {
   const padded = value + "=".repeat((4 - (value.length % 4)) % 4);
@@ -77,4 +99,14 @@ export async function unsubscribeThisDevice(): Promise<string | null> {
   const endpoint = subscription.endpoint;
   await subscription.unsubscribe();
   return endpoint;
+}
+
+/** Ao sair da conta: cancela a inscrição deste aparelho e devolve o endpoint que existia. Nunca lança. */
+export async function releaseThisDevice(): Promise<string | null> {
+  if (!isPushSupported()) return null;
+  try {
+    return await unsubscribeThisDevice();
+  } catch {
+    return null;
+  }
 }

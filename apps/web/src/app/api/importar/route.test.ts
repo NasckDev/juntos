@@ -12,6 +12,8 @@ const { addMember, createTestUser, migrateTestDb, sessionOf } = await import("@/
 const { gridsToXlsx, insertTxs } = await import("@/server/test/finance-fixtures");
 const { IMPORT_MESSAGES, MAX_IMPORT_BYTES } = await import("@/server/validators/import");
 const { XLSX_MIME } = await import("@/server/services/import-workbook");
+const { buildZip } = await import("@/server/test/zip-fixtures");
+const { hitRateLimit, RATE_LIMIT_MESSAGE, RATE_RULES, rateKey } = await import("@/server/rate-limit");
 
 const BASE = "http://localhost:3010";
 
@@ -25,9 +27,8 @@ beforeEach(() => {
 
 function uploadRequest(spaceId: string, file: File, headers: Record<string, string> = {}): Request {
   const form = new FormData();
-  form.set("spaceId", spaceId);
   form.set("file", file);
-  return new Request(`${BASE}/api/importar`, { method: "POST", body: form, headers });
+  return new Request(`${BASE}/api/importar?espaco=${spaceId}`, { method: "POST", body: form, headers });
 }
 
 async function sheetFile(name = "Gasto 2025.xlsx"): Promise<File> {
@@ -82,6 +83,127 @@ describe("POST /api/importar", () => {
 
     sessionState.current = sessionOf(viewer);
     expect((await POST(uploadRequest(owner.home.id, await sheetFile()))).status).toBe(403);
+  });
+});
+
+/**
+ * Corpo em pedaços que registra quantos pedaços o servidor pediu (para provar que nem começou a ler). Com
+ * `highWaterMark: 0`, o stream só produz um pedaço quando alguém lê.
+ */
+function trackedBody(chunks: number, chunkSize = 64 * 1024) {
+  const state = { pulled: 0, canceled: false };
+  const stream = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        if (state.pulled >= chunks) return controller.close();
+        state.pulled += 1;
+        controller.enqueue(new Uint8Array(chunkSize));
+      },
+      cancel() {
+        state.canceled = true;
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  return { state, stream };
+}
+
+function streamRequest(spaceId: string | null, stream: ReadableStream<Uint8Array>): Request {
+  const query = spaceId === null ? "" : `?espaco=${spaceId}`;
+  return new Request(`${BASE}/api/importar${query}`, {
+    method: "POST",
+    body: stream,
+    headers: { "content-type": "multipart/form-data; boundary=xyz" },
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
+describe("POST /api/importar: ordem das conferências e limites", () => {
+  it("exige sessão e papel de editor antes de ler o corpo", async () => {
+    const owner = await createTestUser("Rafa");
+    const viewer = await createTestUser("Carol");
+    const stranger = await createTestUser("Fulano");
+    await addMember(owner.home.id, viewer.id, "viewer");
+
+    for (const [who, status] of [
+      [null, 401],
+      [viewer, 403],
+      [stranger, 404],
+    ] as const) {
+      sessionState.current = who ? sessionOf(who) : null;
+      const { state, stream } = trackedBody(10);
+      const response = await POST(streamRequest(owner.home.id, stream));
+      expect(response.status).toBe(status);
+      expect(state.pulled).toBe(0);
+    }
+  });
+
+  it("recusa sem o espaço na URL (validado antes de tudo)", async () => {
+    const owner = await createTestUser("Rafa");
+    sessionState.current = sessionOf(owner);
+    const { state, stream } = trackedBody(10);
+    expect((await POST(streamRequest(null, stream))).status).toBe(400);
+    expect((await POST(streamRequest("nao-e-uuid", trackedBody(1).stream))).status).toBe(400);
+    expect(state.pulled).toBe(0);
+  });
+
+  it("corta corpo grande sem Content-Length lendo em pedaços, sem ler tudo", async () => {
+    const owner = await createTestUser("Rafa");
+    sessionState.current = sessionOf(owner);
+    // 64 KB × 200 = 12,5 MB anunciados por stream, sem Content-Length.
+    const { state, stream } = trackedBody(200);
+    const response = await POST(streamRequest(owner.home.id, stream));
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ ok: false, error: IMPORT_MESSAGES.tooBig });
+    expect(state.pulled).toBeLessThan(80);
+    expect(state.canceled).toBe(true);
+  });
+
+  it("recusa bomba de descompressão antes do ExcelJS, com mensagem clara", async () => {
+    const owner = await createTestUser("Rafa");
+    sessionState.current = sessionOf(owner);
+    const bomb = buildZip([{ name: "xl/worksheets/sheet1.xml", data: new Uint8Array(3 * 1024 * 1024) }]);
+    const suspicious = await POST(uploadRequest(owner.home.id, new File([bomb], "bomba.xlsx", { type: XLSX_MIME })));
+    expect(suspicious.status).toBe(415);
+    expect(await suspicious.json()).toEqual({ ok: false, error: IMPORT_MESSAGES.zipSuspicious });
+
+    const lying = buildZip([{ name: "a.xml", data: new Uint8Array(10), declaredSize: 60 * 1024 * 1024 }]);
+    const huge = await POST(uploadRequest(owner.home.id, new File([lying], "enorme.xlsx", { type: XLSX_MIME })));
+    expect(huge.status).toBe(413);
+    expect(await huge.json()).toEqual({ ok: false, error: IMPORT_MESSAGES.zipTooLarge });
+
+    const many = buildZip(Array.from({ length: 201 }, (_, i) => ({ name: `p${i}.xml`, data: new Uint8Array(1) })));
+    const crowded = await POST(uploadRequest(owner.home.id, new File([many], "muitas.xlsx", { type: XLSX_MIME })));
+    expect(crowded.status).toBe(415);
+    expect(await crowded.json()).toEqual({ ok: false, error: IMPORT_MESSAGES.zipTooManyEntries });
+  });
+
+  it("aceita de volta a planilha exportada pelo próprio app", async () => {
+    const owner = await createTestUser("Rafa");
+    sessionState.current = sessionOf(owner);
+    await insertTxs(owner.home.id, owner.id, [
+      { description: "Aluguel", amount: 150_000, competence: "2026-03", day: 10, category: "moradia" },
+      { description: "Salário", amount: 500_000, competence: "2026-03", day: 5, category: "salario", kind: "in" },
+    ]);
+    const exported = await GET(
+      new Request(`${BASE}/api/exportar?espaco=${owner.home.id}&formato=xlsx&de=2026-01&ate=2026-12`),
+    );
+    const file = new File([await exported.arrayBuffer()], "Gasto_anual_2026_Casa.xlsx", { type: XLSX_MIME });
+    const response = await POST(uploadRequest(owner.home.id, file));
+    expect(response.status).toBe(200);
+  });
+
+  it("depois de 10 envios na hora, recusa com 429 sem ler o arquivo", async () => {
+    const owner = await createTestUser("Rafa");
+    sessionState.current = sessionOf(owner);
+    for (let i = 0; i < RATE_RULES.importUpload.limit; i += 1) {
+      await hitRateLimit(getDb(), RATE_RULES.importUpload, rateKey(RATE_RULES.importUpload, owner.id));
+    }
+    const { state, stream } = trackedBody(1);
+    const response = await POST(streamRequest(owner.home.id, stream));
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ ok: false, error: RATE_LIMIT_MESSAGE });
+    expect(state.pulled).toBe(0);
   });
 });
 

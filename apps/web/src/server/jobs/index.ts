@@ -2,6 +2,7 @@ import type { Database } from "../db";
 import { sendEmail } from "../email";
 import { isEmailEnabled } from "../env";
 import { sendPush } from "../push";
+import { purgeStaleRateLimits } from "../rate-limit";
 import { purgeExpiredInvites } from "../services/members";
 import { idleGuests, purgeUser, usersDueForDeletion } from "../services/users";
 import { purgeUndoTokens } from "../undo";
@@ -62,6 +63,10 @@ export const DAILY_JOBS: readonly DailyJob[] = [
   {
     name: "limpar-tokens-de-desfazer",
     run: ({ db, now }) => purgeUndoTokens(db, now),
+  },
+  {
+    name: "limpar-limites-de-tentativas",
+    run: ({ db, now }) => purgeStaleRateLimits(db, now),
   },
   {
     // Contas fixas do mês, avisos do dia (sem repetir) e push/e-mail só dos avisos novos.

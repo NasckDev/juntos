@@ -41,6 +41,7 @@ describe("proteção da rotina diária", () => {
       "excluir-convidados-parados",
       "limpar-convites-vencidos",
       "limpar-tokens-de-desfazer",
+      "limpar-limites-de-tentativas",
       "avisos-do-dia",
     ]);
   });

@@ -6,6 +6,7 @@ import {
   filterForExport,
   type IsoDate,
   type Member,
+  type Role,
   type Totals,
   totals,
 } from "@juntos/core";
@@ -17,13 +18,14 @@ import { EXPORT_MESSAGES, type ExportFilterData, type ExportFormat, toCoreFilter
 import { listCategories } from "./categories-read";
 import { renderCsv, renderPdf, renderXlsx } from "./export-files";
 import type { TxView } from "./finance-types";
-import { materializeMonths } from "./month";
+import { materializeMonths, previewMissingMonths } from "./month";
 import { listTransactions } from "./transactions";
 
 /*
  * Exportação (`doExport` do protótipo), sempre no servidor: os filtros do core escolhem os lançamentos e o modelo
  * puro da planilha (`buildWorkbookModel`) vira .xlsx com ExcelJS; PDF com jsPDF e CSV com BOM e ";".
- * Quem chama confere o acesso (`requireMember(spaceId, "viewer")`).
+ * Quem chama confere o acesso (`requireMember(spaceId, "viewer")`) e informa o papel: para quem só vê, nada é
+ * gravado (as contas fixas que faltam entram calculadas em memória; ADR 0006).
  */
 
 export interface ExportSummary {
@@ -59,18 +61,28 @@ export async function listSpaceMemberNames(db: Executor, spaceId: string): Promi
   return rows.map((row) => ({ id: row.id, name: row.name, active: row.status === "active" }));
 }
 
-/** Lançamentos do período (contas fixas dos meses lançadas antes, como o `monthTx` do protótipo), já filtrados. */
-async function selectForExport(db: Database, filter: ExportFilterData, today: IsoDate): Promise<TxView[]> {
+/**
+ * Lançamentos do período (contas fixas dos meses lançadas antes, como o `monthTx` do protótipo), já filtrados.
+ * Quem edita grava as contas fixas que faltam (como ao abrir o mês); quem só vê recebe as mesmas linhas calculadas,
+ * sem escrita no banco.
+ */
+async function selectForExport(db: Database, filter: ExportFilterData, today: IsoDate, role: Role): Promise<TxView[]> {
   const core = toCoreFilter(filter);
   const months = exportMonths(core);
-  await materializeMonths(db, filter.spaceId, months, today);
+  const pending = role === "viewer" ? await previewMissingMonths(db, filter.spaceId, months, today) : [];
+  if (role !== "viewer") await materializeMonths(db, filter.spaceId, months, today);
   const txs = await listTransactions(db, filter.spaceId, months);
-  return filterForExport(core, txs);
+  return filterForExport(core, [...txs, ...pending]);
 }
 
 /** Resumo ao vivo da tela de exportação: quantos lançamentos e os totais. */
-export async function summarizeExport(db: Database, filter: ExportFilterData, today: IsoDate): Promise<ExportSummary> {
-  const list = await selectForExport(db, filter, today);
+export async function summarizeExport(
+  db: Database,
+  filter: ExportFilterData,
+  today: IsoDate,
+  role: Role,
+): Promise<ExportSummary> {
+  const list = await selectForExport(db, filter, today, role);
   return { count: list.length, totals: totals(list) };
 }
 
@@ -112,9 +124,10 @@ export async function buildExport(
   format: ExportFormat,
   filter: ExportFilterData,
   today: IsoDate,
+  role: Role,
   generatedAt: Date = new Date(),
 ): Promise<ExportFile> {
-  const list = await selectForExport(db, filter, today);
+  const list = await selectForExport(db, filter, today, role);
   if (list.length === 0) throw new DomainError(EXPORT_MESSAGES.empty);
   const [categoryRows, members, name] = await Promise.all([
     listCategories(db, filter.spaceId),

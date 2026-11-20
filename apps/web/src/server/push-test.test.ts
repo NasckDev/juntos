@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionUser } from "./session";
 
 const state = vi.hoisted(() => ({
@@ -19,6 +20,12 @@ vi.mock("./push", () => ({ sendPush: sendPushMock }));
 
 const { sendTestPush } = await import("./actions/push-test");
 const { PUSH_TEST_MESSAGES } = await import("./push-test-messages");
+const { RATE_LIMIT_MESSAGE, RATE_RULES } = await import("./rate-limit");
+const { migrateTestDb } = await import("./test/helpers");
+
+beforeAll(async () => {
+  await migrateTestDb();
+});
 
 const USER: SessionUser = {
   id: "u1",
@@ -31,7 +38,8 @@ const USER: SessionUser = {
 };
 
 beforeEach(() => {
-  state.session = USER;
+  // Id novo a cada teste: o limite de tentativas conta por pessoa.
+  state.session = { ...USER, id: randomUUID() };
   state.pushEnabled = true;
   state.result = { enabled: true, sent: 1, removed: 0, failed: 0 };
   sendPushMock.mockReset();
@@ -45,7 +53,7 @@ describe("sendTestPush", () => {
     expect(result).toEqual({ ok: true, data: { sent: 2, removed: 1, failed: 0 } });
     expect(sendPushMock).toHaveBeenCalledTimes(1);
     const [, userId, payload] = sendPushMock.mock.calls[0] ?? [];
-    expect(userId).toBe("u1");
+    expect(userId).toBe(state.session?.id);
     expect(payload).toMatchObject({ href: "/ajustes/avisos", tag: "teste" });
   });
 
@@ -69,6 +77,13 @@ describe("sendTestPush", () => {
     state.session = null;
     const result = await sendTestPush();
     expect(result.ok).toBe(false);
+    expect(sendPushMock).not.toHaveBeenCalled();
+  });
+
+  it("no máximo 5 testes por hora: depois disso, mensagem amigável e nada é enviado", async () => {
+    for (let i = 0; i < RATE_RULES.pushTest.limit; i += 1) expect((await sendTestPush()).ok).toBe(true);
+    sendPushMock.mockClear();
+    expect(await sendTestPush()).toEqual({ ok: false, error: RATE_LIMIT_MESSAGE });
     expect(sendPushMock).not.toHaveBeenCalled();
   });
 

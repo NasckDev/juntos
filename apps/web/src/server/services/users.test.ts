@@ -5,12 +5,13 @@ import {
   categories,
   notificationReads,
   notifications,
+  spaceMembers,
   spaces,
   transactions,
   user,
   userPreferences,
 } from "../db/schema";
-import { addMember, createTestUser, migrateTestDb } from "../test/helpers";
+import { addMember, createTestUser, memberRow, migrateTestDb } from "../test/helpers";
 import { getPreferences, updatePreferences } from "./preferences";
 import { createSpace, listUserSpaces } from "./spaces";
 import { ensureUserSetup, linkGuestToAccount } from "./users";
@@ -109,6 +110,22 @@ describe("convidado vira conta Google", () => {
 
     const viagem = (await listUserSpaces(db, account.id)).filter((space) => space.id === shared.id);
     expect(viagem).toEqual([expect.objectContaining({ role: "editor" })]);
+  });
+
+  it("quem foi removida do espaço continua removida, mesmo que o convidado participasse", async () => {
+    const db = getDb();
+    const owner = await createTestUser("Ana");
+    const shared = await createSpace(db, owner.id, "Viagem");
+    const account = await createTestUser("Rafa");
+    const guest = await createTestUser("Convidado", { anonymous: true });
+    const accountMember = await addMember(shared.id, account.id, "viewer");
+    await db.update(spaceMembers).set({ status: "removed" }).where(eq(spaceMembers.id, accountMember));
+    await addMember(shared.id, guest.id, "editor");
+
+    await linkGuestToAccount(db, guest.id, account.id);
+
+    expect(await memberRow(accountMember)).toMatchObject({ status: "removed", role: "viewer" });
+    expect((await listUserSpaces(db, account.id)).map((space) => space.id)).not.toContain(shared.id);
   });
 
   it("o visto e lido do convidado passam para a conta, sem sobrescrever o que a conta já tinha", async () => {

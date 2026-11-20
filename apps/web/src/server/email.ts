@@ -51,13 +51,17 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+/** Assunto do e-mail de convite, sem texto livre de quem convida. */
+export const INVITE_SUBJECT = "Você foi convidado para um espaço no Juntos";
+
 export function inviteEmail(input: {
   readonly to: string;
   readonly inviterName: string;
   readonly spaceName: string;
   readonly inviteUrl: string;
 }): EmailMessage {
-  const subject = `${input.inviterName} convidou você para “${input.spaceName}” no Juntos`;
+  // Assunto fixo: nome do espaço e de quem convida são texto livre e ficam só no corpo, escapados (ADR 0006).
+  const subject = INVITE_SUBJECT;
   const text = [
     `${input.inviterName} convidou você para acompanhar as contas de “${input.spaceName}” no Juntos.`,
     "",

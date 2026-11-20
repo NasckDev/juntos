@@ -60,7 +60,13 @@ async function addEntry(
   await page.getByRole("button", { name: "Novo lançamento" }).first().click();
   const form = page.getByRole("dialog", { name: "Novo lançamento" });
   await expect(form).toBeVisible();
-  if (options.kind) await form.getByRole("radio", { name: options.kind }).check({ force: true });
+  if (options.kind) {
+    // Sem `force`: no celular a folha ainda está subindo quando o diálogo aparece, e o clique forçado caía fora do
+    // rádio. Assim o Playwright espera a folha parar antes de clicar.
+    const kind = form.getByRole("radio", { name: options.kind });
+    await kind.check();
+    await expect(kind).toBeChecked();
+  }
   await form.getByLabel("Valor").fill(amount);
   await form.getByLabel("Descrição").fill(description);
   await form.getByLabel("Data").fill(date);

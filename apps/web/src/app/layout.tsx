@@ -17,6 +17,15 @@ export const metadata: Metadata = {
   description:
     "Finanças da casa, sozinho ou a dois: contas fixas que se lançam sozinhas, divisão justa, orçamento e metas.",
   applicationName: "Juntos",
+  // O manifesto (`app/manifest.ts`) entra sozinho; o iPhone ainda lê o ícone e o título destas tags.
+  icons: {
+    icon: [
+      { url: "/icons/icon.svg", type: "image/svg+xml" },
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: { capable: true, title: "Juntos", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

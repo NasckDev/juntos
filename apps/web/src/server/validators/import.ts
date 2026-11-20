@@ -10,7 +10,15 @@ export const IMPORT_MESSAGES = {
   selectOne: "Selecione pelo menos um lançamento.",
   gone: "Essa importação não está mais disponível. Escolha a planilha de novo.",
   year: "Escolha o ano da planilha.",
+  /** Conferência do ZIP antes de abrir a planilha (ADR 0006). */
+  zipTooLarge: "Essa planilha fica grande demais quando aberta (mais de 50 MB). Escolha um arquivo menor.",
+  zipTooManyEntries: "Esse arquivo tem partes internas demais para uma planilha. Confira se é uma planilha .xlsx.",
+  zipSuspicious:
+    "Não dá para abrir esse arquivo com segurança: ele parece corrompido ou compactado de um jeito estranho. Salve a planilha de novo no Excel e tente outra vez.",
 } as const;
+
+/** Espaço do upload: vai na URL (`/api/importar?espaco=<id>`) para conferir o acesso antes de ler o corpo. */
+export const IMPORT_SPACE_PARAM = "espaco";
 
 /**
  * Limite do upload (especificação 5.7). A Vercel recusa corpo de requisição acima de 4,5 MB antes de chegar ao app;

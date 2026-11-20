@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { bigint, check, index, integer, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { spaces } from "./spaces";
 
@@ -82,4 +82,18 @@ export const undoTokens = pgTable(
     index("undo_tokens_expires_idx").on(t.expiresAt),
     check("undo_tokens_expiry_check", sql`${t.expiresAt} > ${t.createdAt}`),
   ],
+);
+
+/**
+ * Contador de tentativas por janela fixa (`src/server/rate-limit.ts`). A chave junta a regra e quem tenta
+ * (ex.: `importar:<userId>`); o upsert atômico conta ou reinicia a janela numa instrução só.
+ */
+export const rateLimits = pgTable(
+  "rate_limits",
+  {
+    key: text("key").primaryKey(),
+    count: integer("count").notNull(),
+    windowStart: timestamp("window_start", { withTimezone: true }).notNull(),
+  },
+  (t) => [index("rate_limits_window_idx").on(t.windowStart)],
 );

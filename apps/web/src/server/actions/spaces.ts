@@ -5,6 +5,7 @@ import { requireUser } from "../access";
 import { writeActiveSpaceId } from "../active-space";
 import { getDb } from "../db";
 import { assertMember } from "../membership";
+import { enforceUserRateLimit, RATE_RULES } from "../rate-limit";
 import { type ActionResult, runAction } from "../result";
 import * as spaces from "../services/spaces";
 import type { UndoTokenInfo } from "../undo";
@@ -19,10 +20,11 @@ import {
   switchSpaceSchema,
 } from "../validators/spaces";
 
-/** Cria um espaço vazio (a pessoa é a dona) e já o deixa ativo. */
+/** Cria um espaço vazio (a pessoa é a dona) e já o deixa ativo. No máximo 10 por dia. */
 export async function createSpace(input: CreateSpaceInput): Promise<ActionResult<spaces.SpaceSummary>> {
   return runAction(createSpaceSchema, input, async ({ name }) => {
     const user = await requireUser();
+    await enforceUserRateLimit(getDb(), RATE_RULES.spaceCreate, user.id);
     const created = await spaces.createSpace(getDb(), user.id, name);
     await writeActiveSpaceId(created.id);
     revalidatePath("/", "layout");

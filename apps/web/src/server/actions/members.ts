@@ -5,6 +5,7 @@ import { requireUser } from "../access";
 import { writeActiveSpaceId } from "../active-space";
 import { getDb } from "../db";
 import { inviteEmail, sendEmail } from "../email";
+import { enforceRateLimit, enforceUserRateLimit, hashedPart, RATE_RULES, rateKey } from "../rate-limit";
 import { type ActionResult, runAction } from "../result";
 import * as members from "../services/members";
 import {
@@ -24,21 +25,29 @@ export interface InviteCreated extends members.CreatedInvite {
 }
 
 /**
- * Convida uma pessoa (só o dono). Devolve o link para copiar e mandar; com `RESEND_API_KEY`,
- * o convite também vai por e-mail. Se o e-mail falhar, o convite continua valendo pelo link.
+ * Convida uma pessoa (só o dono). Devolve o link para copiar e mandar. O e-mail com o convite só sai de conta
+ * com login Google (com `RESEND_API_KEY`): convidado anônimo não dispara e-mail para ninguém, para o app não
+ * virar relay de spam (ADR 0006). Se o e-mail falhar, o convite continua valendo pelo link.
+ * Limites: 20 convites por dia por pessoa e 5 por destinatário por dia.
  */
 export async function createInvite(input: CreateInviteInput): Promise<ActionResult<InviteCreated>> {
   return runAction(createInviteSchema, input, async (data) => {
     const user = await requireUser();
-    const invite = await members.createInvite(getDb(), { id: user.id, email: user.email }, data);
-    const email = await sendEmail(
-      inviteEmail({
-        to: invite.email,
-        inviterName: user.name,
-        spaceName: invite.spaceName,
-        inviteUrl: invite.inviteUrl,
-      }),
-    );
+    const db = getDb();
+    await enforceUserRateLimit(db, RATE_RULES.inviteCreate, user.id);
+    const recipientKey = rateKey(RATE_RULES.inviteRecipient, user.id, hashedPart(data.email));
+    await enforceRateLimit(db, RATE_RULES.inviteRecipient, recipientKey);
+    const invite = await members.createInvite(db, { id: user.id, email: user.email }, data);
+    const email = user.isAnonymous
+      ? { sent: false as const }
+      : await sendEmail(
+          inviteEmail({
+            to: invite.email,
+            inviterName: user.name,
+            spaceName: invite.spaceName,
+            inviteUrl: invite.inviteUrl,
+          }),
+        );
     revalidatePath("/", "layout");
     return { ...invite, emailSent: email.sent };
   });

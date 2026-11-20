@@ -19,7 +19,11 @@ export const INVITE_MESSAGES = {
   ownerRole: "O dono do espaço não muda de permissão.",
   ownerRemoval: "O dono não pode ser removido do espaço.",
   memberNotFound: "Essa pessoa não está neste espaço.",
+  tooManyPending: "Este espaço já tem 20 convites pendentes. Cancele algum antes de convidar outra pessoa.",
 } as const;
+
+/** Convites pendentes por espaço (ADR 0006): o bastante para a casa, pouco para virar disparador. */
+export const MAX_PENDING_INVITES = 20;
 
 export type MemberStatus = "invited" | "active";
 
@@ -94,6 +98,7 @@ export interface InviteActor {
 /**
  * Convida por e-mail (só o dono). O token tem 32 bytes aleatórios e só o SHA-256 vai para o banco.
  * Um convite vencido para o mesmo e-mail é renovado (novo token, novo prazo); um vigente é recusado.
+ * No máximo `MAX_PENDING_INVITES` convites pendentes por espaço.
  */
 export async function createInvite(
   db: Database,
@@ -148,6 +153,13 @@ export async function createInvite(
       await tx.update(spaceMembers).set({ role: input.role }).where(eq(spaceMembers.id, existing.id));
       memberId = existing.id;
     } else {
+      // Trava o espaço para dois convites ao mesmo tempo não passarem juntos do limite.
+      await tx.execute(sql`select 1 from ${spaces} where ${spaces.id} = ${input.spaceId} for update`);
+      const [pending] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(spaceMembers)
+        .where(and(eq(spaceMembers.spaceId, input.spaceId), eq(spaceMembers.status, "invited")));
+      if ((pending?.count ?? 0) >= MAX_PENDING_INVITES) throw new DomainError(INVITE_MESSAGES.tooManyPending, "email");
       const [created] = await tx
         .insert(spaceMembers)
         .values({ spaceId: input.spaceId, invitedEmail: email, role: input.role, status: "invited" })

@@ -284,6 +284,15 @@ export async function confirmImport(
   const categories = await listCategories(db, input.spaceId);
 
   return db.transaction(async (tx) => {
+    // Reivindica o lote antes de tudo: só uma confirmação passa de "review" para "done" (duas abas ou cliques
+    // duplos ao mesmo tempo); a outra encontra o lote já usado e desiste sem gravar nada.
+    const [claimed] = await tx
+      .update(importBatches)
+      .set({ status: "done" })
+      .where(and(eq(importBatches.id, pending.id), eq(importBatches.status, "review")))
+      .returning({ id: importBatches.id });
+    if (!claimed) throw new DomainError(IMPORT_MESSAGES.gone);
+
     const target =
       destination === "new"
         ? await insertOwnedSpace(tx, actor.userId, await newSpaceName(tx, actor.userId, year ?? pending.year))
@@ -335,7 +344,7 @@ export async function confirmImport(
 
     await tx
       .update(importBatches)
-      .set({ status: "done", mode, rowsImported: plan.create.length, spaceId })
+      .set({ mode, rowsImported: plan.create.length, spaceId })
       .where(eq(importBatches.id, pending.id));
 
     const nowYm = todayParts(today).ym;

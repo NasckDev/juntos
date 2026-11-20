@@ -77,10 +77,17 @@ type MemberRow = typeof spaceMembers.$inferSelect;
 
 const ROLE_RANK = { viewer: 1, editor: 2, owner: 3 } as const;
 
-/** A conta e o convidado estão no mesmo espaço: fica uma linha só, com o maior papel. */
-async function mergeDuplicateMembership(tx: Executor, guest: MemberRow, account: MemberRow): Promise<void> {
+/** Papel e situação da linha que fica: o maior papel entre os ativos; quem o dono removeu continua removida. */
+function mergedMembership(guest: MemberRow, account: MemberRow): Pick<MemberRow, "role" | "status"> {
+  // A remoção é decisão do dono sobre a pessoa: entrar com o Google não pode desfazê-la.
+  if (account.status === "removed" || guest.status !== "active") return { role: account.role, status: account.status };
   const role = ROLE_RANK[guest.role] > ROLE_RANK[account.role] ? guest.role : account.role;
-  const status = guest.status === "active" || account.status === "active" ? "active" : account.status;
+  return { role, status: "active" };
+}
+
+/** A conta e o convidado estão no mesmo espaço: fica uma linha só (a da conta), sem desfazer remoção. */
+async function mergeDuplicateMembership(tx: Executor, guest: MemberRow, account: MemberRow): Promise<void> {
+  const { role, status } = mergedMembership(guest, account);
   await tx.update(transactions).set({ paidBy: account.id }).where(eq(transactions.paidBy, guest.id));
   await tx.update(recurrences).set({ paidBy: account.id }).where(eq(recurrences.paidBy, guest.id));
   await tx.update(settlements).set({ fromMember: account.id }).where(eq(settlements.fromMember, guest.id));

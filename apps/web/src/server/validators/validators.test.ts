@@ -97,16 +97,25 @@ describe("preferências e perfil", () => {
 });
 
 describe("push e desfazer", () => {
-  it("inscrição precisa de endpoint https e chaves em base64url", () => {
+  it("inscrição precisa de endpoint https de um serviço de push conhecido e chaves em base64url", () => {
     const valid = {
-      endpoint: "https://push.example.com/send/abc",
+      endpoint: "https://fcm.googleapis.com/fcm/send/abc",
       expirationTime: null,
       keys: { p256dh: "BOr6x_y-z", auth: "q1w2e3" },
     };
     expect(savePushSubscriptionSchema.safeParse(valid).success).toBe(true);
-    expect(savePushSubscriptionSchema.safeParse({ ...valid, endpoint: "http://push.example.com/x" }).success).toBe(
+    expect(savePushSubscriptionSchema.safeParse({ ...valid, endpoint: "http://fcm.googleapis.com/x" }).success).toBe(
       false,
     );
+    for (const endpoint of [
+      "https://push.example.com/send/abc",
+      "https://127.0.0.1/send",
+      "https://localhost/send",
+      "https://fcm.googleapis.com:8443/send",
+      "https://169.254.169.254/latest/meta-data",
+    ]) {
+      expect(savePushSubscriptionSchema.safeParse({ ...valid, endpoint }).success).toBe(false);
+    }
     expect(savePushSubscriptionSchema.safeParse({ ...valid, keys: { p256dh: "<script>", auth: "x" } }).success).toBe(
       false,
     );

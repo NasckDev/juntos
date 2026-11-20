@@ -3,10 +3,10 @@ import ExcelJS from "exceljs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { buildMonthlySheets } from "../../../../../packages/core/test/fixtures/monthly-sheet";
 import { getDb } from "../db";
-import { importBatches, notificationReads, notifications, spaces, transactions } from "../db/schema";
+import { categories, importBatches, notificationReads, notifications, spaces, transactions } from "../db/schema";
 import { DomainError } from "../result";
 import { gridsToXlsx, insertTxs } from "../test/finance-fixtures";
-import { createTestUser, migrateTestDb, type TestUser } from "../test/helpers";
+import { addMember, createTestUser, migrateTestDb, type TestUser } from "../test/helpers";
 import { applyUndo } from "../undo";
 import type { ExportFilterData } from "../validators/export";
 import {
@@ -15,11 +15,12 @@ import {
   MAX_IMPORT_BYTES,
   PLATFORM_BODY_LIMIT_BYTES,
 } from "../validators/import";
-import { buildExport, exportFileName, fileSlug } from "./export";
+import { createTransactionSchema } from "../validators/transactions";
+import { buildExport, exportFileName, fileSlug, summarizeExport } from "./export";
 import { csvAmount, csvText } from "./export-files";
 import { cancelImport, confirmImport, createImportBatch, findPendingImport, reviewExisting } from "./import";
 import { checkUpload, readWorkbook, XLSX_MIME } from "./import-workbook";
-import { listTransactions } from "./transactions";
+import { createTransaction, listTransactions } from "./transactions";
 
 const TODAY = "2026-11-20";
 const YEAR_2026: Omit<ExportFilterData, "spaceId"> = {
@@ -119,7 +120,7 @@ describe("exportação", () => {
   it("Excel no modelo da planilha: abas por mês com fórmulas, Visão Geral com soma 3D e Lançamentos", async () => {
     const owner = await createTestUser("Rafa");
     await seed(owner);
-    const file = await buildExport(getDb(), "xlsx", filterFor(owner.home.id), TODAY);
+    const file = await buildExport(getDb(), "xlsx", filterFor(owner.home.id), TODAY, "owner");
     expect(file.fileName).toBe("Gasto_anual_2026_Casa.xlsx");
     expect(file.contentType).toBe("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
@@ -181,11 +182,17 @@ describe("exportação", () => {
   it("PDF começa com %PDF e CSV tem BOM, ponto e vírgula e centavos sem ponto flutuante", async () => {
     const owner = await createTestUser("Rafa");
     await seed(owner);
-    const pdf = await buildExport(getDb(), "pdf", filterFor(owner.home.id, { from: "2026-01", to: "2026-02" }), TODAY);
+    const pdf = await buildExport(
+      getDb(),
+      "pdf",
+      filterFor(owner.home.id, { from: "2026-01", to: "2026-02" }),
+      TODAY,
+      "owner",
+    );
     expect(pdf.fileName).toBe("Juntos_relatorio_2026-01_a_2026-02_Casa.pdf");
     expect(new TextDecoder().decode(pdf.body.slice(0, 5))).toBe("%PDF-");
 
-    const csv = await buildExport(getDb(), "csv", filterFor(owner.home.id, { kinds: ["out"] }), TODAY);
+    const csv = await buildExport(getDb(), "csv", filterFor(owner.home.id, { kinds: ["out"] }), TODAY, "owner");
     expect([...csv.body.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const lines = new TextDecoder().decode(csv.body).trim().split("\r\n");
     expect(lines[0]).toBe("Mês;Dia;Tipo;Descrição;Categoria;Valor;Situação;Pago com;Quem;Observação");
@@ -197,7 +204,7 @@ describe("exportação", () => {
     const owner = await createTestUser("Rafa");
     await seed(owner);
     await expect(
-      buildExport(getDb(), "csv", filterFor(owner.home.id, { status: "open", kinds: ["in"] }), TODAY),
+      buildExport(getDb(), "csv", filterFor(owner.home.id, { status: "open", kinds: ["in"] }), TODAY, "owner"),
     ).rejects.toThrow(new DomainError("Nenhum lançamento com esses filtros."));
     expect(exportFileName("xlsx", { from: "2026-03", to: "2026-03" }, "Viagem à praia")).toBe(
       "Juntos_2026-03_Viagem_a_praia.xlsx",
@@ -206,6 +213,46 @@ describe("exportação", () => {
     expect(csvAmount(12_050)).toBe("120,50");
     expect(csvAmount(5)).toBe("0,05");
     expect(csvText('=HYPERLINK("x")')).toBe('"\'=HYPERLINK(""x"")"');
+  });
+});
+
+describe("exportação por quem só vê", () => {
+  it("não grava nada: as contas fixas que faltam entram calculadas, com o mesmo resultado de quem edita", async () => {
+    const db = getDb();
+    const owner = await createTestUser("Rafa");
+    const viewer = await createTestUser("Carol");
+    await addMember(owner.home.id, viewer.id, "viewer");
+    const [contas] = await db.select({ id: categories.id }).from(categories).where(eq(categories.key, "contas"));
+    const data = createTransactionSchema.parse({
+      spaceId: owner.home.id,
+      kind: "out",
+      amount: 12_000,
+      description: "Internet",
+      date: "2026-11-10",
+      categoryId: contas?.id,
+      paidBy: owner.home.memberId,
+      paid: false,
+      paymentMethod: "Pix",
+      note: "",
+      personal: false,
+      repeat: "monthly",
+      installments: "",
+      confirmDuplicate: false,
+    });
+    await createTransaction(db, actorOf(owner), data, TODAY);
+    const rowsOf = () => db.select().from(transactions).where(eq(transactions.spaceId, owner.home.id));
+    const before = await rowsOf();
+    const filter = filterFor(owner.home.id, { from: "2026-11", to: "2027-03" });
+
+    const asViewer = await summarizeExport(db, filter, TODAY, "viewer");
+    const file = await buildExport(db, "csv", filter, TODAY, "viewer");
+    expect(file.body.byteLength).toBeGreaterThan(0);
+    expect(await rowsOf()).toHaveLength(before.length);
+    expect(asViewer.count).toBe(5);
+
+    const asOwner = await summarizeExport(db, filter, TODAY, "owner");
+    expect(asOwner).toEqual(asViewer);
+    expect((await rowsOf()).length).toBeGreaterThan(before.length);
   });
 });
 
@@ -368,6 +415,31 @@ describe("importação: planilha mensal (fixture fictícia gerada em memória)",
     expect(deleted?.deletedAt).not.toBeNull();
   });
 
+  it("duas confirmações ao mesmo tempo gravam o lote uma vez só", async () => {
+    const owner = await createTestUser("Rafa");
+    const batch = await upload(owner);
+    const input = {
+      spaceId: owner.home.id,
+      batchId: batch.batchId,
+      selected: Array.from({ length: batch.count }, (_, i) => i),
+      year: 2025,
+      destination: "here" as const,
+      mode: "add" as const,
+    };
+    const results = await Promise.allSettled([
+      confirmImport(getDb(), actorOf(owner), input, TODAY),
+      confirmImport(getDb(), actorOf(owner), input, TODAY),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected");
+    expect(rejected?.status === "rejected" ? rejected.reason : null).toBeInstanceOf(DomainError);
+    const imported = await getDb()
+      .select()
+      .from(transactions)
+      .where(and(eq(transactions.importBatchId, batch.batchId), isNull(transactions.deletedAt)));
+    expect(imported).toHaveLength(batch.count);
+  });
+
   it("cancelar descarta o lote; confirmar lote alheio ou já usado falha; nada selecionado também", async () => {
     const owner = await createTestUser("Rafa");
     const other = await createTestUser("Lu");
@@ -395,7 +467,7 @@ describe("ida e volta: o Excel exportado pelo app, reimportado pelo app", () => 
     const owner = await createTestUser("Rafa");
     await seed(owner);
     const original = comparable(await liveTxs(owner.home.id));
-    const file = await buildExport(getDb(), "xlsx", filterFor(owner.home.id), TODAY);
+    const file = await buildExport(getDb(), "xlsx", filterFor(owner.home.id), TODAY, "owner");
 
     await getDb().update(transactions).set({ deletedAt: new Date() }).where(eq(transactions.spaceId, owner.home.id));
     const sheets = await readWorkbook(file.body);
@@ -422,7 +494,7 @@ describe("ida e volta: o Excel exportado pelo app, reimportado pelo app", () => 
   it('reimportar sem apagar: tudo vem marcado como "Já existe", menos o que foi excluído', async () => {
     const owner = await createTestUser("Rafa");
     const ids = await seed(owner);
-    const file = await buildExport(getDb(), "xlsx", filterFor(owner.home.id), TODAY);
+    const file = await buildExport(getDb(), "xlsx", filterFor(owner.home.id), TODAY, "owner");
     await getDb()
       .update(transactions)
       .set({ deletedAt: new Date() })

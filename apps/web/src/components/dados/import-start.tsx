@@ -6,7 +6,7 @@ import { type ChangeEvent, useRef, useState } from "react";
 import { toastError } from "@/components/financas/feedback";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { IMPORT_MESSAGES, MAX_IMPORT_BYTES } from "@/server/validators/import";
+import { IMPORT_MESSAGES, IMPORT_SPACE_PARAM, MAX_IMPORT_BYTES } from "@/server/validators/import";
 
 const XLSX_ACCEPT = ".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const VIEWER_MESSAGE = "Você não tem permissão para fazer isso neste espaço.";
@@ -43,9 +43,10 @@ export function ImportStart({ spaceId, canImport }: ImportStartProps) {
     setReading(true);
     try {
       const body = new FormData();
-      body.set("spaceId", spaceId);
       body.set("file", file);
-      const response = await fetch("/api/importar", { method: "POST", body, credentials: "same-origin" });
+      // O espaço vai na URL: o servidor confere o acesso antes de ler o arquivo.
+      const url = `/api/importar?${IMPORT_SPACE_PARAM}=${encodeURIComponent(spaceId)}`;
+      const response = await fetch(url, { method: "POST", body, credentials: "same-origin" });
       if (!response.ok) {
         toastError(await uploadError(response));
         return;

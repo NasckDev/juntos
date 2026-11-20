@@ -13,7 +13,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/server/db/migrate.ts",
     "db:migrate:deploy": "tsx scripts/migrar-no-deploy.ts",
-    "chaves:vapid": "tsx scripts/gerar-chaves-vapid.ts"
+    "chaves:vapid": "tsx scripts/gerar-chaves-vapid.ts",
+    "icones": "tsx scripts/gerar-icones.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.17",

@@ -81,6 +81,7 @@ export async function loadDadosData(spaceId: string, defaults: ExportDefaults): 
           db,
           { spaceId, ...defaults, categoryIds: [...defaults.categoryIds], kinds: [...defaults.kinds] },
           today,
+          membership.role,
         )
       : null;
   const review = pending

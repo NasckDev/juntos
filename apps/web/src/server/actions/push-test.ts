@@ -6,6 +6,7 @@ import { getDb } from "../db";
 import { isPushEnabled } from "../env";
 import { sendPush } from "../push";
 import { PUSH_TEST_MESSAGES } from "../push-test-messages";
+import { enforceUserRateLimit, RATE_RULES } from "../rate-limit";
 import { type ActionResult, DomainError, runAction } from "../result";
 
 const noInput = z.undefined().or(z.object({}).strict());
@@ -23,6 +24,7 @@ export async function sendTestPush(): Promise<ActionResult<PushTestResult>> {
   return runAction(noInput, undefined, async () => {
     if (!isPushEnabled()) throw new DomainError(PUSH_TEST_MESSAGES.disabled);
     const user = await requireUser();
+    await enforceUserRateLimit(getDb(), RATE_RULES.pushTest, user.id);
     const result = await sendPush(getDb(), user.id, {
       title: "Juntos",
       body: "Notificação de teste: está tudo certo por aqui.",

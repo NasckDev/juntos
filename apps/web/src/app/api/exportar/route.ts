@@ -1,6 +1,7 @@
 import { todayInSaoPaulo } from "@juntos/core";
 import { AccessError, accessErrorResponse, requireMember } from "@/server/access";
 import { getDb } from "@/server/db";
+import { enforceUserRateLimit, RATE_RULES, RateLimitError } from "@/server/rate-limit";
 import { DomainError } from "@/server/result";
 import { buildExport } from "@/server/services/export";
 import { EXPORT_MESSAGES, exportParamsToInput, exportRequestSchema } from "@/server/validators/export";
@@ -28,8 +29,9 @@ export async function GET(request: Request): Promise<Response> {
   }
   const { format, ...filter } = parsed.data;
   try {
-    await requireMember(filter.spaceId, "viewer");
-    const file = await buildExport(getDb(), format, filter, todayInSaoPaulo());
+    const { user, membership } = await requireMember(filter.spaceId, "viewer");
+    await enforceUserRateLimit(getDb(), RATE_RULES.exportDownload, user.id);
+    const file = await buildExport(getDb(), format, filter, todayInSaoPaulo(), membership.role);
     return new Response(file.body, {
       headers: {
         "Content-Type": file.contentType,
@@ -40,6 +42,7 @@ export async function GET(request: Request): Promise<Response> {
     });
   } catch (error: unknown) {
     if (error instanceof AccessError) return accessErrorResponse(error);
+    if (error instanceof RateLimitError) return Response.json({ ok: false, error: error.message }, { status: 429 });
     if (error instanceof DomainError) return Response.json({ ok: false, error: error.message }, { status: 422 });
     console.error("Falha ao gerar a exportação:", error);
     return Response.json({ ok: false, error: EXPORT_MESSAGES.failed }, { status: 500 });

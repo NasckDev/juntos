@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   isPushSupported,
+  needsHomeScreenInstall,
   readDevicePushState,
   subscribeThisDevice,
   toSubscriptionInput,
@@ -21,11 +22,13 @@ export interface PushCardProps {
   vapidPublicKey: string | null;
 }
 
-type PushStatus = "checking" | "unsupported" | "server-off" | "denied" | "off" | "on";
+type PushStatus = "checking" | "unsupported" | "install-ios" | "server-off" | "denied" | "off" | "on";
 
 export const PUSH_COPY = {
   serverOff: "As notificações no celular ainda não foram configuradas neste ambiente.",
   unsupported: "Este navegador não tem suporte a notificações no aparelho.",
+  installIos:
+    "No iPhone e no iPad, os avisos só chegam com o Juntos na Tela de Início: no Safari, toque em Compartilhar, depois em “Adicionar à Tela de Início”, e abra o app por lá.",
   denied:
     "As notificações estão bloqueadas neste navegador. Libere nas configurações do site (o cadeado ao lado do endereço) e volte aqui.",
   dismissed: "Sem a sua permissão, não dá para ativar as notificações. Tente de novo quando quiser.",
@@ -35,6 +38,7 @@ export const PUSH_COPY = {
 const EXPLANATION: Partial<Record<PushStatus, string>> = {
   "server-off": PUSH_COPY.serverOff,
   unsupported: PUSH_COPY.unsupported,
+  "install-ios": PUSH_COPY.installIos,
   denied: PUSH_COPY.denied,
 };
 
@@ -45,6 +49,7 @@ export function PushCard({ serverEnabled, vapidPublicKey }: PushCardProps) {
 
   const refresh = useCallback(async () => {
     if (!serverEnabled || !vapidPublicKey) return setStatus("server-off");
+    if (needsHomeScreenInstall()) return setStatus("install-ios");
     if (!isPushSupported()) return setStatus("unsupported");
     try {
       const state = await readDevicePushState();

@@ -69,6 +69,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   Reflect.deleteProperty(navigator, "serviceWorker");
 });
@@ -84,6 +85,27 @@ describe("PushCard", () => {
     render(<PushCard serverEnabled vapidPublicKey={KEY} />);
     expect(await screen.findByText(PUSH_COPY.unsupported)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Ativar/ })).not.toBeInTheDocument();
+  });
+
+  it("no iPhone fora da Tela de Início, explica como adicionar em vez de dizer que não tem suporte", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    );
+    render(<PushCard serverEnabled vapidPublicKey={KEY} />);
+    expect(await screen.findByText(PUSH_COPY.installIos)).toBeInTheDocument();
+    expect(screen.queryByText(PUSH_COPY.unsupported)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Ativar/ })).not.toBeInTheDocument();
+  });
+
+  it("no iPhone com o app instalado, segue o fluxo normal", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148",
+    );
+    Object.defineProperty(navigator, "standalone", { configurable: true, value: true });
+    installBrowserPush("default");
+    render(<PushCard serverEnabled vapidPublicKey={KEY} />);
+    expect(await screen.findByRole("button", { name: /Ativar/ })).toBeInTheDocument();
+    Reflect.deleteProperty(navigator, "standalone");
   });
 
   it("explica como liberar quando a permissão está bloqueada", async () => {
