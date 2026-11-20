@@ -1,6 +1,7 @@
 "use client";
 
 import { Info, LoaderCircle, Repeat, ShieldCheck, Target, Users } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/shell/logo";
@@ -171,8 +172,15 @@ export function SignIn({ googleEnabled, googleFailed = false, returnTo = DEFAULT
         <p className="mt-8 flex gap-2.5 border-t border-line pt-6 text-sm text-muted">
           <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
           <span>
-            Ao continuar, você concorda em usar o Juntos para organizar as finanças da sua casa. Você pode exportar ou
-            apagar seus dados quando quiser.
+            Ao continuar, você concorda com os{" "}
+            <Link href="/termos" className="font-semibold text-brand-text underline underline-offset-4">
+              Termos de uso
+            </Link>{" "}
+            e com a{" "}
+            <Link href="/privacidade" className="font-semibold text-brand-text underline underline-offset-4">
+              Política de privacidade
+            </Link>
+            . Você pode exportar ou apagar seus dados quando quiser.
           </span>
         </p>
       </div>
