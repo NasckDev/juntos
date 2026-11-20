@@ -1,0 +1,21 @@
+{
+  "name": "juntos",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Finanças da casa, a dois ou sozinho. Fase 0: protótipo navegável publicado, com plano do app full stack.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node scripts/servidor.mjs",
+    "privacidade": "node scripts/verificar-privacidade.mjs",
+    "test": "playwright test",
+    "prints": "node scripts/gerar-prints.mjs",
+    "verify": "npm run privacidade && npm test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}
