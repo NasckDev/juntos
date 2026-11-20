@@ -11,6 +11,8 @@ export interface NewEntryOptions {
   readonly repeat?: Repeat;
   /** Data já escolhida (Calendário: o dia selecionado). */
   readonly date?: IsoDate;
+  /** Categoria já escolhida (Orçamento: o "+" da categoria). */
+  readonly categoryId?: string;
 }
 
 export interface FinanceUi {

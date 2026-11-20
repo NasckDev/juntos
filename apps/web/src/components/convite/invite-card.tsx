@@ -129,7 +129,11 @@ export function InviteCard({ token, invite, signedIn, googleEnabled, googleFaile
         return;
       }
       // O Google redireciona sozinho; o convidado volta a esta página já com sessão.
-      if (kind === "guest") router.refresh();
+      if (kind === "guest") {
+        router.refresh();
+        // Com a sessão criada, a página volta com o botão "Aceitar convite": ele não pode ficar travado.
+        setBusy(null);
+      }
     } catch {
       setError(GENERIC_ERROR);
       setBusy(null);

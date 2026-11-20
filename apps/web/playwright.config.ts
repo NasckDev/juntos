@@ -7,9 +7,10 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * O servidor (`scripts/e2e-server.ts`) sobe um `next dev` próprio na porta 3012, com banco PGlite num diretório
  * temporário só dos testes (apagado a cada execução) e saída em `.next-e2e`, para rodar ao lado do servidor de
- * desenvolvimento sem disputar o banco nem a pasta do Next.
+ * desenvolvimento sem disputar o banco nem a pasta do Next. Para rodar duas execuções ao mesmo tempo, mude
+ * `E2E_PORT`, `E2E_PGLITE_DIR` e `E2E_NEXT_DIST_DIR`.
  */
-const PORT = 3012;
+const PORT = Number(process.env.E2E_PORT ?? 3012);
 const baseURL = `http://localhost:${PORT}`;
 
 export default defineConfig({
@@ -41,8 +42,8 @@ export default defineConfig({
     env: {
       PORT: String(PORT),
       DATABASE_URL: "",
-      PGLITE_DIR: path.join(tmpdir(), "juntos-e2e-pglite"),
-      NEXT_DIST_DIR: ".next-e2e",
+      PGLITE_DIR: process.env.E2E_PGLITE_DIR ?? path.join(tmpdir(), "juntos-e2e-pglite"),
+      NEXT_DIST_DIR: process.env.E2E_NEXT_DIST_DIR ?? ".next-e2e",
       BETTER_AUTH_URL: baseURL,
       NEXT_TELEMETRY_DISABLED: "1",
     },

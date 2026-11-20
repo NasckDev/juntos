@@ -36,13 +36,14 @@ test.describe("Ajustes", () => {
     await page.reload();
     await expect(page.getByLabel("Nome")).toHaveValue("Rafa");
 
+    // No computador a aba se chama "Pessoas e compartilhamento"; no celular, só "Pessoas".
     for (const [label, path] of [
-      ["Aparência", "/ajustes/aparencia"],
-      ["Avisos", "/ajustes/avisos"],
-      ["Pessoas", "/ajustes/pessoas"],
-      ["Dados", "/ajustes/dados"],
+      [/^Aparência$/, "/ajustes/aparencia"],
+      [/^Avisos$/, "/ajustes/avisos"],
+      [/^Pessoas( e compartilhamento)?$/, "/ajustes/pessoas"],
+      [/^Dados$/, "/ajustes/dados"],
     ] as const) {
-      await page.getByRole("link", { name: label, exact: true }).click();
+      await page.getByRole("link", { name: label }).click();
       await page.waitForURL(`**${path}`);
     }
   });

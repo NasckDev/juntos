@@ -130,13 +130,15 @@ function initialState(mode: TxFormMode, data: EntryFormData, viewYm: YearMonth):
   }
   const kind = mode.options.kind ?? "out";
   const date = mode.options.date ?? defaultDate(viewYm, data.today);
+  // Categoria vinda de fora (Orçamento) só vale se existir e for do tipo; fica "tocada" para o nome não trocá-la.
+  const preset = data.categories.find((category) => category.id === mode.options.categoryId && category.kind === kind);
   return {
     kind,
     amount: null,
     description: "",
     date,
-    categoryId: suggestCategoryId(data.categories, "", kind) ?? "",
-    categoryTouched: false,
+    categoryId: preset?.id ?? suggestCategoryId(data.categories, "", kind) ?? "",
+    categoryTouched: preset !== undefined,
     paidBy: data.currentMemberId,
     paid: date <= data.today,
     paidTouched: false,

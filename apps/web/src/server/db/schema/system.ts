@@ -24,9 +24,41 @@ export const auditLog = pgTable(
 export const RESTORABLE_ENTITIES = ["transactions", "recurrences", "goals", "settlements", "spaces"] as const;
 export type RestorableEntity = (typeof RESTORABLE_ENTITIES)[number];
 
+/**
+ * Categoria personalizada excluída, com o que foi movido para a categoria de reserva, para o "Desfazer" devolver
+ * tudo como estava (a categoria volta com o mesmo id, então os vínculos se refazem só trocando o `category_id`).
+ */
+export interface DeletedCategorySnapshot {
+  readonly id: string;
+  readonly name: string;
+  readonly icon: string;
+  readonly hue: number;
+  readonly kind: "in" | "out" | "save";
+  /** Todos os lançamentos (inclusive os excluídos) e contas fixas que estavam na categoria. */
+  readonly transactionIds: readonly string[];
+  readonly recurrenceIds: readonly string[];
+  /** Limite mensal que a categoria tinha, ou `null`. */
+  readonly budgetCents: number | null;
+}
+
+/** Limite de uma categoria antes de uma sugestão automática (`null` = não tinha limite). */
+export interface PreviousBudget {
+  readonly categoryId: string;
+  readonly limitCents: number | null;
+}
+
 export type UndoAction =
   | { readonly type: "restore"; readonly entity: RestorableEntity; readonly ids: readonly string[] }
-  | { readonly type: "revert-import"; readonly batchId: string };
+  | {
+      readonly type: "revert-import";
+      readonly batchId: string;
+      /** Lançamentos que o modo "substituir" tirou e que voltam ao desfazer. */
+      readonly restoreIds?: readonly string[];
+      /** Espaço criado pela importação (destino "espaço novo"), excluído ao desfazer. */
+      readonly createdSpaceId?: string;
+    }
+  | { readonly type: "restore-category"; readonly category: DeletedCategorySnapshot }
+  | { readonly type: "restore-budgets"; readonly previous: readonly PreviousBudget[] };
 
 /**
  * Token de "Desfazer" (10 minutos). O id é o próprio token, aleatório, e só vale para quem o criou.

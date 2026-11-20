@@ -1,8 +1,12 @@
 import { and, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database, Executor } from "./db";
 import {
+  budgets,
+  categories,
+  type DeletedCategorySnapshot,
   goals,
   importBatches,
+  type PreviousBudget,
   type RestorableEntity,
   recurrences,
   settlements,
@@ -14,6 +18,7 @@ import {
 } from "./db/schema";
 import { assertMember } from "./membership";
 import { DomainError } from "./result";
+import { isUniqueViolation } from "./services/db-errors";
 
 /** Prazo do "Desfazer" no servidor (especificação 5.7). */
 export const UNDO_TTL_MS = 10 * 60 * 1000;
@@ -70,12 +75,28 @@ export async function applyUndo(db: Database, userId: string, token: string, now
       .returning();
     if (!row) throw new DomainError(UNDO_EXPIRED_MESSAGE);
     const { action, spaceId } = row;
-    const affected =
-      action.type === "restore"
-        ? await restore(tx, userId, spaceId, action.entity, action.ids)
-        : await revertImport(tx, userId, spaceId, action.batchId, now);
+    const affected = await applyAction(tx, userId, spaceId, action, now);
     return { spaceId, action, affected };
   });
+}
+
+async function applyAction(
+  tx: Executor,
+  userId: string,
+  spaceId: string,
+  action: UndoAction,
+  now: Date,
+): Promise<number> {
+  switch (action.type) {
+    case "restore":
+      return restore(tx, userId, spaceId, action.entity, action.ids);
+    case "revert-import":
+      return revertImport(tx, userId, spaceId, action, now);
+    case "restore-category":
+      return restoreCategory(tx, userId, spaceId, action.category);
+    case "restore-budgets":
+      return restoreBudgets(tx, userId, spaceId, action.previous);
+  }
 }
 
 async function restore(
@@ -114,14 +135,19 @@ const RESTORE_TABLES = {
   settlements,
 } as const;
 
+/**
+ * Reverte o lote inteiro: tira os lançamentos importados, devolve os que o modo "substituir" tirou e, se a
+ * importação criou um espaço novo, exclui esse espaço.
+ */
 async function revertImport(
   tx: Executor,
   userId: string,
   spaceId: string,
-  batchId: string,
+  action: Extract<UndoAction, { type: "revert-import" }>,
   now: Date,
 ): Promise<number> {
-  await assertMember(tx, userId, spaceId, "editor");
+  const { batchId } = action;
+  await assertMember(tx, userId, spaceId, action.createdSpaceId === spaceId ? "owner" : "editor");
   const [batch] = await tx
     .update(importBatches)
     .set({ status: "undone" })
@@ -135,7 +161,92 @@ async function revertImport(
       and(eq(transactions.spaceId, spaceId), eq(transactions.importBatchId, batchId), isNull(transactions.deletedAt)),
     )
     .returning({ id: transactions.id });
+  const restoreIds = [...(action.restoreIds ?? [])];
+  if (restoreIds.length > 0) {
+    await tx
+      .update(transactions)
+      .set({ deletedAt: null })
+      .where(
+        and(eq(transactions.spaceId, spaceId), inArray(transactions.id, restoreIds), isNotNull(transactions.deletedAt)),
+      );
+  }
+  if (action.createdSpaceId === spaceId) {
+    await tx
+      .update(spaces)
+      .set({ deletedAt: now })
+      .where(and(eq(spaces.id, spaceId), isNull(spaces.deletedAt)));
+  }
   return rows.length;
+}
+
+/** Devolve a categoria excluída (mesmo id), os lançamentos e contas fixas que estavam nela e o limite. */
+async function restoreCategory(
+  tx: Executor,
+  userId: string,
+  spaceId: string,
+  snapshot: DeletedCategorySnapshot,
+): Promise<number> {
+  await assertMember(tx, userId, spaceId, "editor");
+  try {
+    await tx.insert(categories).values({
+      id: snapshot.id,
+      spaceId,
+      key: null,
+      name: snapshot.name,
+      icon: snapshot.icon,
+      hue: snapshot.hue,
+      kind: snapshot.kind,
+    });
+  } catch (error: unknown) {
+    if (isUniqueViolation(error)) {
+      throw new DomainError("Já existe uma categoria com esse nome. Renomeie a outra para desfazer.");
+    }
+    throw error;
+  }
+  const txIds = [...snapshot.transactionIds];
+  const recIds = [...snapshot.recurrenceIds];
+  const movedTx = txIds.length
+    ? await tx
+        .update(transactions)
+        .set({ categoryId: snapshot.id })
+        .where(and(eq(transactions.spaceId, spaceId), inArray(transactions.id, txIds)))
+        .returning({ id: transactions.id })
+    : [];
+  const movedRec = recIds.length
+    ? await tx
+        .update(recurrences)
+        .set({ categoryId: snapshot.id })
+        .where(and(eq(recurrences.spaceId, spaceId), inArray(recurrences.id, recIds)))
+        .returning({ id: recurrences.id })
+    : [];
+  if (snapshot.budgetCents !== null) {
+    await tx.insert(budgets).values({ spaceId, categoryId: snapshot.id, monthlyLimitCents: snapshot.budgetCents });
+  }
+  return 1 + movedTx.length + movedRec.length;
+}
+
+/** Volta os limites ao que eram antes da sugestão automática. */
+async function restoreBudgets(
+  tx: Executor,
+  userId: string,
+  spaceId: string,
+  previous: readonly PreviousBudget[],
+): Promise<number> {
+  await assertMember(tx, userId, spaceId, "editor");
+  for (const item of previous) {
+    if (item.limitCents === null) {
+      await tx.delete(budgets).where(and(eq(budgets.spaceId, spaceId), eq(budgets.categoryId, item.categoryId)));
+    } else {
+      await tx
+        .insert(budgets)
+        .values({ spaceId, categoryId: item.categoryId, monthlyLimitCents: item.limitCents })
+        .onConflictDoUpdate({
+          target: [budgets.spaceId, budgets.categoryId],
+          set: { monthlyLimitCents: item.limitCents },
+        });
+    }
+  }
+  return previous.length;
 }
 
 /** Ao restaurar um espaço, o nome não pode repetir outro espaço da mesma pessoa criado nesse meio tempo. */

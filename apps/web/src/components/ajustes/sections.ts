@@ -4,6 +4,7 @@ export const AJUSTES_SECTIONS = [
   { slug: "aparencia", href: "/ajustes/aparencia", label: "Aparência", shortLabel: "Aparência" },
   { slug: "avisos", href: "/ajustes/avisos", label: "Avisos", shortLabel: "Avisos" },
   { slug: "pessoas", href: "/ajustes/pessoas", label: "Pessoas e compartilhamento", shortLabel: "Pessoas" },
+  { slug: "categorias", href: "/ajustes/categorias", label: "Categorias", shortLabel: "Categorias" },
   { slug: "dados", href: "/ajustes/dados", label: "Dados", shortLabel: "Dados" },
 ] as const;
 

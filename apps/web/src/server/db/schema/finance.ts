@@ -1,3 +1,4 @@
+import type { ImportItem } from "@juntos/core";
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -6,6 +7,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   smallint,
@@ -72,6 +74,8 @@ export const importBatches = pgTable(
     status: text("status", { enum: ["review", "done", "undone"] })
       .notNull()
       .default("review"),
+    /** Linhas lidas da planilha, já normalizadas pelo core (categoria = id no banco). Revisadas antes de gravar. */
+    items: jsonb("items").$type<ImportItem[]>().notNull().default([]),
     createdBy: actor("created_by"),
     createdAt: createdAt(),
   },

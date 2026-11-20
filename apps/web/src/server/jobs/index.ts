@@ -1,7 +1,11 @@
 import type { Database } from "../db";
+import { sendEmail } from "../email";
+import { isEmailEnabled } from "../env";
+import { sendPush } from "../push";
 import { purgeExpiredInvites } from "../services/members";
 import { idleGuests, purgeUser, usersDueForDeletion } from "../services/users";
 import { purgeUndoTokens } from "../undo";
+import { runDailyNotices } from "./daily-notices";
 
 /**
  * Rotina diária (`/api/cron/diario`). Cada job é idempotente: rodar duas vezes no mesmo dia não muda nada.
@@ -58,6 +62,14 @@ export const DAILY_JOBS: readonly DailyJob[] = [
   {
     name: "limpar-tokens-de-desfazer",
     run: ({ db, now }) => purgeUndoTokens(db, now),
+  },
+  {
+    // Contas fixas do mês, avisos do dia (sem repetir) e push/e-mail só dos avisos novos.
+    name: "avisos-do-dia",
+    run: async (context) => {
+      const report = await runDailyNotices(context, { sendPush, sendEmail, emailEnabled: isEmailEnabled() });
+      return report.notices;
+    },
   },
 ];
 

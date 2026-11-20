@@ -3,7 +3,8 @@ import { boolean, check, date, index, jsonb, pgTable, text, timestamp, uniqueInd
 import { user } from "./auth";
 import { spaces } from "./spaces";
 
-export const NOTIFICATION_TYPES = ["late", "due", "budget", "goal", "invite", "auto"] as const;
+/** `import`: "N lançamentos importados" (sempre aparece; não depende das preferências de aviso). */
+export const NOTIFICATION_TYPES = ["late", "due", "budget", "goal", "invite", "auto", "import"] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const THEMES = ["auto", "light", "dark"] as const;
@@ -63,7 +64,7 @@ export const notifications = pgTable(
   (t) => [
     uniqueIndex("notifications_space_dedupe_uq").on(t.spaceId, t.dedupeKey),
     index("notifications_user_idx").on(t.userId, t.createdAt),
-    check("notifications_type_check", sql`${t.type} in ('late', 'due', 'budget', 'goal', 'invite', 'auto')`),
+    check("notifications_type_check", sql`${t.type} in ('late', 'due', 'budget', 'goal', 'invite', 'auto', 'import')`),
   ],
 );
 

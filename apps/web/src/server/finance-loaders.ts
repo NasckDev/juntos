@@ -1,19 +1,12 @@
 import { type IsoDate, previousPeriod, type Role, todayInSaoPaulo } from "@juntos/core";
-import { and, asc, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, or } from "drizzle-orm";
 import { cache } from "react";
 import { type Period, periodMonthsOf } from "@/lib/finance";
 import { requireMember } from "./access";
 import { getDb } from "./db";
-import {
-  budgets,
-  goals,
-  type NotificationType,
-  type NotifyPreferences,
-  notifications,
-  spaceMembers,
-  user,
-} from "./db/schema";
+import { type NotifyPreferences, notifications, spaceMembers, user } from "./db/schema";
 import { getAppContext } from "./loaders";
+import { listBudgets } from "./services/budgets";
 import { listCategories } from "./services/categories-read";
 import type {
   BudgetLine,
@@ -24,7 +17,9 @@ import type {
   RecurrenceView,
   TxView,
 } from "./services/finance-types";
+import { listGoals } from "./services/goals";
 import { materializeMonths } from "./services/month";
+import { enabledTypes } from "./services/notifications";
 import { listRecurrences } from "./services/recurrences-read";
 import {
   hasTransactions,
@@ -66,22 +61,13 @@ export async function countMembers(spaceIds: readonly string[]): Promise<Record<
   return Object.fromEntries(rows.map((row) => [row.spaceId, row.total]));
 }
 
-const TYPE_PREF: Record<NotificationType, keyof NotifyPreferences> = {
-  late: "late",
-  due: "due",
-  budget: "budget",
-  goal: "goal",
-  invite: "people",
-  auto: "auto",
-};
-
 /** Avisos ainda não vistos no espaço (para a pessoa ou para todos), respeitando os tipos ligados em Ajustes. */
 export async function countUnseenNotifications(
   spaceId: string,
   userId: string,
   prefs: NotifyPreferences,
 ): Promise<number> {
-  const types = (Object.keys(TYPE_PREF) as NotificationType[]).filter((type) => prefs[TYPE_PREF[type]]);
+  const types = enabledTypes(prefs);
   if (types.length === 0) return 0;
   const [row] = await getDb()
     .select({ total: count() })
@@ -119,34 +105,8 @@ export async function loadEntryFormData(spaceId: string): Promise<EntryFormData>
   };
 }
 
-async function loadBudgets(spaceId: string): Promise<BudgetLine[]> {
-  const rows = await getDb()
-    .select({ categoryId: budgets.categoryId, monthlyLimit: budgets.monthlyLimitCents })
-    .from(budgets)
-    .where(eq(budgets.spaceId, spaceId));
-  return rows;
-}
-
-async function loadGoals(spaceId: string): Promise<GoalView[]> {
-  // Subconsulta com nomes qualificados: sem junção, o drizzle escreve as colunas sem o nome da tabela.
-  const saved = sql<number>`coalesce((
-    select sum(gd.amount_cents) from goal_deposits gd
-    inner join transactions t on t.id = gd.transaction_id
-    where gd.goal_id = "goals"."id" and t.deleted_at is null
-  ), 0)`.mapWith(Number);
-  return getDb()
-    .select({
-      id: goals.id,
-      name: goals.name,
-      icon: goals.icon,
-      target: goals.targetCents,
-      saved,
-      monthly: goals.monthlyCents,
-    })
-    .from(goals)
-    .where(and(eq(goals.spaceId, spaceId), isNull(goals.deletedAt)))
-    .orderBy(asc(goals.createdAt));
-}
+const loadBudgets = (spaceId: string): Promise<BudgetLine[]> => listBudgets(getDb(), spaceId);
+const loadGoals = (spaceId: string): Promise<GoalView[]> => listGoals(getDb(), spaceId);
 
 export interface HomeData {
   readonly today: IsoDate;

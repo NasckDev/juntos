@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AppFrame } from "@/components/financas/app-frame";
+import { syncNoticesOnOpen } from "@/server/dados-loaders";
 import { countMembers, countUnseenNotifications, loadAppContext, loadEntryFormData } from "@/server/finance-loaders";
 import { needsWelcome } from "@/server/welcome";
 
@@ -9,6 +10,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const ctx = await loadAppContext();
   if (!ctx) redirect("/entrar");
   const { user, spaces, activeSpace, preferences } = ctx;
+  // Avisos de agora entram no histórico antes de contar o sino (`syncEv` do protótipo).
+  await syncNoticesOnOpen(activeSpace.id);
   const [counts, unreadCount, form] = await Promise.all([
     countMembers(spaces.map((space) => space.id)),
     countUnseenNotifications(activeSpace.id, user.id, preferences.notify),

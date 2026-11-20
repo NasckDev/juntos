@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { AjustesNav } from "@/components/ajustes/ajustes-nav";
 import { AparenciaPanel } from "@/components/ajustes/aparencia-panel";
 import { AvisosPanel } from "@/components/ajustes/avisos-panel";
+import { CategoriasPanel } from "@/components/ajustes/categorias-panel";
 import { ContaPanel } from "@/components/ajustes/conta-panel";
 import { DadosPanel } from "@/components/ajustes/dados-panel";
 import { PessoasPanel } from "@/components/ajustes/pessoas-panel";
@@ -10,8 +11,11 @@ import { AJUSTES_SECTIONS, resolveSection } from "@/components/ajustes/sections"
 import { PageHeader } from "@/components/shell/page-header";
 import { toAppearance } from "@/lib/preferences";
 import { firstParam } from "@/lib/return-path";
+import { requireMember } from "@/server/access";
+import { getDb } from "@/server/db";
 import { getAppContext, getSpaceMembers } from "@/server/loaders";
 import { DELETION_GRACE_MS } from "@/server/services/account";
+import { listCategories } from "@/server/services/categories-read";
 
 export const metadata: Metadata = { title: "Ajustes" };
 
@@ -59,6 +63,13 @@ export default async function AjustesPage({ params, searchParams }: { params: Pa
             space={{ id: activeSpace.id, name: activeSpace.name, role: activeSpace.role }}
             members={(await getSpaceMembers(activeSpace.id)) ?? []}
             spaceCount={ctx.spaces.length}
+          />
+        ) : null}
+        {section === "categorias" ? (
+          <CategoriasPanel
+            spaceId={activeSpace.id}
+            categories={await listCategories(getDb(), activeSpace.id)}
+            canEdit={(await requireMember(activeSpace.id, "viewer")).membership.role !== "viewer"}
           />
         ) : null}
         {section === "dados" ? <DadosPanel /> : null}
