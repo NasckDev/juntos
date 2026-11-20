@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // Testes de fumaça do protótipo, no celular (390 px) primeiro e no computador.
-// O servidor local aplica a mesma CSP da Vercel (scripts/servidor.mjs).
+// O servidor local aplica a mesma CSP da Vercel (prototipo/servidor.mjs).
 export default defineConfig({
   testDir: "tests",
   fullyParallel: true,
@@ -19,7 +19,7 @@ export default defineConfig({
     { name: "computador", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } } },
   ],
   webServer: {
-    command: "node scripts/servidor.mjs",
+    command: "node servidor.mjs",
     url: "http://localhost:4791",
     reuseExistingServer: false,
   },

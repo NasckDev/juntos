@@ -26,7 +26,7 @@ const TELAS = {
   ],
 };
 
-const servidor = spawn(process.execPath, ["scripts/servidor.mjs"], { cwd: raiz, env: { ...process.env, PORT: String(PORTA) } });
+const servidor = spawn(process.execPath, ["prototipo/servidor.mjs"], { cwd: raiz, env: { ...process.env, PORT: String(PORTA) } });
 await new Promise((ok) => servidor.stdout.once("data", ok));
 
 const navegador = await chromium.launch();

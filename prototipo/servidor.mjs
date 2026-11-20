@@ -1,15 +1,15 @@
-// Servidor estático local que aplica os mesmos cabeçalhos do vercel.json.
+// Servidor estático local que aplica os cabeçalhos de segurança de cabecalhos.json.
 // Assim os testes rodam com a mesma Content-Security-Policy da produção.
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const raiz = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const pasta = join(raiz, "prototipo");
+const pasta = resolve(fileURLToPath(new URL(".", import.meta.url)));
+
 const porta = Number(process.env.PORT ?? 4791);
-const config = JSON.parse(await readFile(join(raiz, "vercel.json"), "utf8"));
-const cabecalhos = Object.fromEntries(config.headers.flatMap((regra) => regra.headers.map((h) => [h.key, h.value])));
+const lista = JSON.parse(await readFile(join(pasta, "cabecalhos.json"), "utf8"));
+const cabecalhos = Object.fromEntries(lista.map((h) => [h.key, h.value]));
 
 const TIPOS = {
   ".html": "text/html; charset=utf-8",

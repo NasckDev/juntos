@@ -1,0 +1,23 @@
+// Ponto único de exportação do núcleo. Cada módulo novo entra aqui.
+export * from "./budget.ts";
+export * from "./calendar.ts";
+export * from "./categories.ts";
+export * from "./division.ts";
+export * from "./duplicates.ts";
+export * from "./export/filters.ts";
+export * from "./export/workbook-model.ts";
+export * from "./goals.ts";
+export * from "./import/detailed.ts";
+export * from "./import/monthly-sheet.ts";
+export * from "./import/review.ts";
+export * from "./import/types.ts";
+export * from "./import/workbook.ts";
+export * from "./money.ts";
+export * from "./notifications.ts";
+export * from "./price.ts";
+export * from "./projection.ts";
+export * from "./recurrence.ts";
+export * from "./status.ts";
+export * from "./tips.ts";
+export * from "./totals.ts";
+export type * from "./types.ts";
