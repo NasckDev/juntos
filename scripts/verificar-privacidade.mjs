@@ -1,12 +1,27 @@
 // Barra a publicação se o repositório tiver algo que não pode ficar público:
 // planilhas e exportações reais, arquivos .env, chaves e tokens, ou e-mails fora dos domínios de exemplo.
 // Roda no CI, no build da Vercel e localmente com `npm run privacidade`.
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const raiz = fileURLToPath(new URL("..", import.meta.url));
-const IGNORAR = new Set([".git", "node_modules", "test-results", "playwright-report", ".vercel"]);
+const IGNORAR = new Set([
+  ".git",
+  "node_modules",
+  "test-results",
+  "playwright-report",
+  ".vercel",
+  ".next",
+  ".turbo",
+  ".data",
+  "coverage",
+  "dist",
+]);
+// Metadados de dependências trazem e-mails de autores de bibliotecas, que não são dados do projeto.
+const ARQUIVOS_IGNORADOS = new Set(["package-lock.json"]);
 const PROIBIDOS = new Set([".xlsx", ".xls", ".csv", ".env", ".pem", ".key", ".p12"]);
 const BINARIOS = new Set([".webp", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2"]);
 
@@ -25,12 +40,38 @@ const SEGREDOS = [
   [/re_[A-Za-z0-9]{20,}/, "chave do Resend"],
 ];
 
-async function* arquivos(pasta) {
+// Pastas geradas (build, testes, cache) nunca são publicadas.
+const ehGerada = (nome) => IGNORAR.has(nome) || nome.startsWith(".next");
+
+async function* varrerPasta(pasta) {
   for (const item of await readdir(pasta, { withFileTypes: true })) {
-    if (IGNORAR.has(item.name)) continue;
+    if (ehGerada(item.name) || ARQUIVOS_IGNORADOS.has(item.name)) continue;
     const caminho = join(pasta, item.name);
-    if (item.isDirectory()) yield* arquivos(caminho);
+    if (item.isDirectory()) yield* varrerPasta(caminho);
     else yield caminho;
+  }
+}
+
+// Com git, varre exatamente o que seria publicado: versionados e novos que não estão no .gitignore.
+// Sem git (ex.: build na Vercel), varre a pasta pulando o que é gerado.
+async function* arquivos(pasta) {
+  let lista;
+  try {
+    lista = execFileSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
+      cwd: pasta,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .split("\0")
+      .filter(Boolean);
+  } catch {
+    yield* varrerPasta(pasta);
+    return;
+  }
+  for (const nome of lista) {
+    if (ARQUIVOS_IGNORADOS.has(nome.split("/").pop())) continue;
+    const caminho = join(pasta, nome);
+    if (existsSync(caminho)) yield caminho;
   }
 }
 
@@ -50,7 +91,8 @@ for await (const arquivo of arquivos(raiz)) {
   for (const encontrado of texto.matchAll(EMAIL)) {
     // Ignora trechos de data URI (base64) que por acaso formam algo com "@".
     if (encontrado[0].length > 80) continue;
-    if (!DOMINIOS_OK.test(encontrado[0])) problemas.push(`${nome}: e-mail fora dos domínios de exemplo (${encontrado[0]})`);
+    if (!DOMINIOS_OK.test(encontrado[0]))
+      problemas.push(`${nome}: e-mail fora dos domínios de exemplo (${encontrado[0]})`);
   }
 }
 

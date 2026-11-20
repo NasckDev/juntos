@@ -20,3 +20,15 @@ dados-privados/
 # Sistema
 .DS_Store
 Thumbs.db
+
+.vercel
+
+# Monorepo
+.turbo/
+.next/
+.next-e2e*/
+coverage/
+dist/
+.data/
+next-env.d.ts
+*.tsbuildinfo
