@@ -5,6 +5,7 @@ import {
   goals,
   importBatches,
   invites,
+  notificationReads,
   notifications,
   pushSubscriptions,
   recurrences,
@@ -202,8 +203,24 @@ async function transferAuthorship(tx: Executor, from: string, to: string): Promi
   await tx.update(invites).set({ acceptedBy: to }).where(eq(invites.acceptedBy, from));
   await tx.update(auditLog).set({ actorId: to }).where(eq(auditLog.actorId, from));
   await tx.update(notifications).set({ userId: to }).where(eq(notifications.userId, from));
+  await transferNoticeReads(tx, from, to);
   await tx.update(pushSubscriptions).set({ userId: to }).where(eq(pushSubscriptions.userId, from));
   await tx.update(undoTokens).set({ userId: to }).where(eq(undoTokens.userId, from));
+}
+
+/** Visto e lido do convidado passam para a conta; se a conta já tinha o seu para o mesmo aviso, fica o da conta. */
+async function transferNoticeReads(tx: Executor, from: string, to: string): Promise<void> {
+  const guestReads = tx
+    .select({
+      notificationId: notificationReads.notificationId,
+      userId: sql<string>`${to}::text`.as("user_id"),
+      seenAt: notificationReads.seenAt,
+      readAt: notificationReads.readAt,
+    })
+    .from(notificationReads)
+    .where(eq(notificationReads.userId, from));
+  await tx.insert(notificationReads).select(guestReads).onConflictDoNothing();
+  await tx.delete(notificationReads).where(eq(notificationReads.userId, from));
 }
 
 /** Usuários com exclusão pedida até `cutoff` (30 dias atrás). */

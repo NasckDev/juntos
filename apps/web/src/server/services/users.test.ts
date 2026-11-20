@@ -1,7 +1,15 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { getDb } from "../db";
-import { categories, spaces, transactions, user, userPreferences } from "../db/schema";
+import {
+  categories,
+  notificationReads,
+  notifications,
+  spaces,
+  transactions,
+  user,
+  userPreferences,
+} from "../db/schema";
 import { addMember, createTestUser, migrateTestDb } from "../test/helpers";
 import { getPreferences, updatePreferences } from "./preferences";
 import { createSpace, listUserSpaces } from "./spaces";
@@ -101,6 +109,44 @@ describe("convidado vira conta Google", () => {
 
     const viagem = (await listUserSpaces(db, account.id)).filter((space) => space.id === shared.id);
     expect(viagem).toEqual([expect.objectContaining({ role: "editor" })]);
+  });
+
+  it("o visto e lido do convidado passam para a conta, sem sobrescrever o que a conta já tinha", async () => {
+    const db = getDb();
+    const owner = await createTestUser("Ana");
+    const shared = await createSpace(db, owner.id, "Viagem");
+    const account = await createTestUser("Rafa");
+    const guest = await createTestUser("Convidado", { anonymous: true });
+    await addMember(shared.id, account.id, "viewer");
+    await addMember(shared.id, guest.id, "editor");
+    const [a, b] = await db
+      .insert(notifications)
+      .values([
+        { spaceId: shared.id, type: "auto", dedupeKey: "aviso-a", title: "A" },
+        { spaceId: shared.id, type: "auto", dedupeKey: "aviso-b", title: "B" },
+      ])
+      .returning({ id: notifications.id });
+    if (!a || !b) throw new Error("sem avisos");
+    const accountSaw = new Date("2026-11-01T10:00:00Z");
+    const guestSaw = new Date("2026-11-10T10:00:00Z");
+    await db.insert(notificationReads).values([
+      { notificationId: a.id, userId: account.id, seenAt: accountSaw, readAt: null },
+      { notificationId: a.id, userId: guest.id, seenAt: guestSaw, readAt: guestSaw },
+      { notificationId: b.id, userId: guest.id, seenAt: guestSaw, readAt: guestSaw },
+    ]);
+
+    await linkGuestToAccount(db, guest.id, account.id);
+
+    const reads = await db
+      .select()
+      .from(notificationReads)
+      .where(eq(notificationReads.userId, account.id))
+      .orderBy(asc(notificationReads.seenAt));
+    expect(reads.map((r) => [r.notificationId, r.seenAt, r.readAt])).toEqual([
+      [a.id, accountSaw, null],
+      [b.id, guestSaw, guestSaw],
+    ]);
+    expect(await db.select().from(notificationReads).where(eq(notificationReads.userId, guest.id))).toEqual([]);
   });
 
   it("preferências nunca mudadas não sobrescrevem as da conta", async () => {

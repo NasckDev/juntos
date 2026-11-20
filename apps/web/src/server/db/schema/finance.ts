@@ -216,6 +216,8 @@ export const goals = pgTable(
   },
   (t) => [
     index("goals_space_idx").on(t.spaceId).where(sql`${t.deletedAt} is null`),
+    // O serviço já confere o nome com mensagem amigável; o índice garante a regra mesmo com dois pedidos ao mesmo tempo.
+    uniqueIndex("goals_space_name_uq").on(t.spaceId, sql`lower(${t.name})`).where(sql`${t.deletedAt} is null`),
     check("goals_target_check", sql`${t.targetCents} > 0`),
     check("goals_monthly_check", sql`${t.monthlyCents} >= 0`),
   ],

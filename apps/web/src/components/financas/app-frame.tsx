@@ -39,8 +39,12 @@ export interface AppFrameProps {
 
 /** Mesma mensagem do servidor para quem só vê o espaço. */
 const VIEWER_MESSAGE = "Você não tem permissão para fazer isso neste espaço.";
-/** Telas com mês na URL (as setas do teclado trocam o mês). */
-const MONTH_PAGES = ["/inicio", "/lancamentos"];
+/**
+ * Telas com mês ou período na URL (`?mes=&meses=`) e seletor de período no cabeçalho: as setas do teclado trocam o
+ * mês. No Planejamento o período só vale na aba Orçamento (as outras abas não usam mês, e o simulador tem campos
+ * deslizantes), então ele fica de fora, assim como Notificações, Dados e Ajustes, que não têm mês.
+ */
+const MONTH_PAGES = ["/inicio", "/lancamentos", "/divisao", "/relatorios"];
 const NAV_KEYS = new Set<string>([...MAIN_NAV, ...SECONDARY_NAV].map((item) => item.key));
 
 function navKeyOf(pathname: string): NavKey {

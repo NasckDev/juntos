@@ -32,7 +32,7 @@ export const buttonVariants = cva(
 );
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
-  /** Renderiza o filho (ex.: `<Link>`) com o visual do botão. */
+  /** Renderiza o filho (ex.: `<Link>`) com o visual do botão; o `icon` vai para dentro dele, antes do texto. */
   asChild?: boolean;
   /** Ícone antes do texto. */
   icon?: ReactNode;
@@ -52,9 +52,11 @@ export function Button({
 }: ButtonProps) {
   const classes = cn(buttonVariants({ variant, size, block }), className);
   if (asChild) {
+    // `Slottable` marca qual filho recebe o visual do botão; o ícone entra antes do texto dele (ex.: dentro do <Link>).
     return (
       <Slot.Root className={classes} {...props}>
-        {children}
+        {icon}
+        <Slot.Slottable>{children}</Slot.Slottable>
       </Slot.Root>
     );
   }

@@ -5,15 +5,12 @@ import { DomainError } from "@/server/result";
 import { createImportBatch } from "@/server/services/import";
 import { checkUpload, readWorkbook } from "@/server/services/import-workbook";
 import { idSchema } from "@/server/validators/common";
-import { IMPORT_MESSAGES, MAX_IMPORT_BYTES } from "@/server/validators/import";
+import { IMPORT_MESSAGES, IMPORT_MULTIPART_OVERHEAD, MAX_IMPORT_BYTES } from "@/server/validators/import";
 
 export const dynamic = "force-dynamic";
 // ExcelJS roda no Node.
 export const runtime = "nodejs";
 export const maxDuration = 60;
-
-/** Folga para o resto do formulário multipart (cabeçalhos e o id do espaço). */
-const MULTIPART_OVERHEAD = 64 * 1024;
 
 function fail(error: string, status: number): Response {
   return Response.json({ ok: false, error }, { status });
@@ -28,7 +25,7 @@ export async function POST(request: Request): Promise<Response> {
   const origin = request.headers.get("origin");
   if (origin && origin !== new URL(request.url).origin) return fail("Origem não permitida.", 403);
   const declared = Number(request.headers.get("content-length") ?? "0");
-  if (declared > MAX_IMPORT_BYTES + MULTIPART_OVERHEAD) return fail(IMPORT_MESSAGES.tooBig, 413);
+  if (declared > MAX_IMPORT_BYTES + IMPORT_MULTIPART_OVERHEAD) return fail(IMPORT_MESSAGES.tooBig, 413);
 
   let form: FormData;
   try {

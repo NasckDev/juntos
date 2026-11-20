@@ -1,10 +1,10 @@
 import { type IsoDate, previousPeriod, type Role, todayInSaoPaulo } from "@juntos/core";
-import { and, asc, count, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull } from "drizzle-orm";
 import { cache } from "react";
 import { type Period, periodMonthsOf } from "@/lib/finance";
 import { requireMember } from "./access";
 import { getDb } from "./db";
-import { type NotifyPreferences, notifications, spaceMembers, user } from "./db/schema";
+import { type NotifyPreferences, notificationReads, notifications, spaceMembers, user } from "./db/schema";
 import { getAppContext } from "./loaders";
 import { listBudgets } from "./services/budgets";
 import { listCategories } from "./services/categories-read";
@@ -19,7 +19,7 @@ import type {
 } from "./services/finance-types";
 import { listGoals } from "./services/goals";
 import { materializeMonths } from "./services/month";
-import { enabledTypes } from "./services/notifications";
+import { addressedTo, enabledTypes, readsOf } from "./services/notifications";
 import { listRecurrences } from "./services/recurrences-read";
 import {
   hasTransactions,
@@ -61,7 +61,7 @@ export async function countMembers(spaceIds: readonly string[]): Promise<Record<
   return Object.fromEntries(rows.map((row) => [row.spaceId, row.total]));
 }
 
-/** Avisos ainda não vistos no espaço (para a pessoa ou para todos), respeitando os tipos ligados em Ajustes. */
+/** Avisos que esta pessoa ainda não viu no espaço (dela ou de todos), respeitando os tipos ligados em Ajustes. */
 export async function countUnseenNotifications(
   spaceId: string,
   userId: string,
@@ -72,13 +72,9 @@ export async function countUnseenNotifications(
   const [row] = await getDb()
     .select({ total: count() })
     .from(notifications)
+    .leftJoin(notificationReads, readsOf(userId))
     .where(
-      and(
-        eq(notifications.spaceId, spaceId),
-        or(isNull(notifications.userId), eq(notifications.userId, userId)),
-        isNull(notifications.seenAt),
-        inArray(notifications.type, types),
-      ),
+      and(addressedTo(spaceId, userId), isNull(notificationReads.notificationId), inArray(notifications.type, types)),
     );
   return row?.total ?? 0;
 }

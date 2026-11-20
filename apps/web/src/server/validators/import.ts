@@ -4,7 +4,7 @@ import { idSchema } from "./common";
 /** Mensagens do protótipo (`#file` change, `doImport`) e da validação do arquivo no servidor. */
 export const IMPORT_MESSAGES = {
   notXlsx: "Não consegui ler esse arquivo. Confira se é uma planilha .xlsx.",
-  tooBig: "A planilha passa de 5 MB. Escolha um arquivo menor.",
+  tooBig: "A planilha passa de 4 MB. Escolha um arquivo menor.",
   missingFile: "Escolha uma planilha .xlsx para importar.",
   noSheets: "Não encontrei abas de meses (Janeiro a Dezembro) nem uma aba “Lançamentos” nesse arquivo.",
   selectOne: "Selecione pelo menos um lançamento.",
@@ -12,8 +12,18 @@ export const IMPORT_MESSAGES = {
   year: "Escolha o ano da planilha.",
 } as const;
 
-/** Limite do upload (especificação 5.7). */
-export const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+/**
+ * Limite do upload (especificação 5.7). A Vercel recusa corpo de requisição acima de 4,5 MB antes de chegar ao app;
+ * com 4 MB, o arquivo mais a folga do formulário (`IMPORT_MULTIPART_OVERHEAD`) sempre cabem e a pessoa recebe a
+ * mensagem `tooBig` em vez de um erro genérico da plataforma.
+ */
+export const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
+
+/** Folga para o resto do formulário multipart (cabeçalhos das partes e o id do espaço). */
+export const IMPORT_MULTIPART_OVERHEAD = 64 * 1024;
+
+/** Limite de corpo das funções da Vercel (4,5 MB), em bytes, contado de forma conservadora. */
+export const PLATFORM_BODY_LIMIT_BYTES = 4_500_000;
 
 /** Ano da planilha mensal: o protótipo oferece de 5 anos atrás até o ano que vem. */
 const yearSchema = z.number({ error: IMPORT_MESSAGES.year }).int().min(2000).max(2100);

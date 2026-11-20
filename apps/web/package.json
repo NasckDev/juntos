@@ -12,6 +12,7 @@
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/server/db/migrate.ts",
+    "db:migrate:deploy": "tsx scripts/migrar-no-deploy.ts",
     "chaves:vapid": "tsx scripts/gerar-chaves-vapid.ts"
   },
   "dependencies": {

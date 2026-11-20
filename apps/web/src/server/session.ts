@@ -16,7 +16,10 @@ export interface SessionUser {
 
 /** Lê a sessão do cookie (uma vez por requisição). Retorna `null` sem sessão válida. */
 export const getSession = cache(async (): Promise<SessionUser | null> => {
-  const result = await getAuth().api.getSession({ headers: await headers() });
+  // `headers()` primeiro: no `next build` é ele que marca a rota como dinâmica, antes de o Better Auth ser criado
+  // (sem os segredos de execução, que o build não tem).
+  const requestHeaders = await headers();
+  const result = await getAuth().api.getSession({ headers: requestHeaders });
   if (!result) return null;
   const { user } = result;
   const isAnonymous = user.isAnonymous === true;

@@ -15,6 +15,24 @@ function todayInSaoPaulo(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 }
 
+/** Mês vizinho no formato `2026-11`. */
+function shiftMonth(ym: string, delta: number): string {
+  const date = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)) - 1 + delta, 1));
+  return date.toISOString().slice(0, 7);
+}
+
+/**
+ * Seta do teclado troca o mês na URL. Antes de a página hidratar, a tecla não tem quem a ouça; por isso tenta de novo,
+ * mas só enquanto a URL ainda não mudou (a URL muda na hora, então nunca anda dois meses).
+ */
+async function pressMonthKey(page: Page, key: "ArrowLeft" | "ArrowRight", expected: string): Promise<void> {
+  const target = new RegExp(`mes=${expected}`);
+  await expect(async () => {
+    if (!target.test(page.url())) await page.keyboard.press(key);
+    await expect(page).toHaveURL(target, { timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+}
+
 async function print(page: Page, name: string, project: string): Promise<void> {
   if (!PRINTS_DIR) return;
   await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, { timeout: 15_000 });
@@ -122,6 +140,8 @@ test("duas pessoas: veredito, modos, acerto, desfazer; relatórios com dados", a
   await expect(page.getByRole("link", { name: "Convidar pessoa" })).toHaveAttribute("href", "/ajustes/pessoas");
   await expectNoSeriousA11yViolations(page);
   await print(page, "divisao-sozinho", project);
+  // As setas do teclado trocam o mês também na Divisão.
+  await pressMonthKey(page, "ArrowRight", shiftMonth(ym, 1));
 
   // Relatórios de conta nova: estado vazio.
   await page.goto("/relatorios");
@@ -197,13 +217,19 @@ test("duas pessoas: veredito, modos, acerto, desfazer; relatórios com dados", a
   await print(page, "divisao-acertada", project);
 
   await settled.getByRole("button", { name: /^Desfazer acerto/ }).click();
+  await expect(page.getByText("Acerto desfeito.")).toBeVisible();
   await expect(verdict(page)).toContainText("Lu deve R$ 20,00 a Rafa");
   await expect(page.getByRole("region", { name: "Acertos registrados" })).toBeHidden();
 
   // O "Desfazer" do toast de registro também funciona.
+  // Cada aviso aparece de novo, mesmo logo depois de outro (um por vez: o novo fecha o anterior).
   await page.getByRole("button", { name: "Registrar acerto" }).click();
+  const registered = page.locator("[data-sonner-toast]").filter({ hasText: "Acerto registrado." });
+  await expect(registered).toBeVisible();
+  await expect(page.getByText("Acerto desfeito.")).toBeHidden();
   await expect(verdict(page)).toContainText("Tudo acertado no mês");
-  await page.getByRole("button", { name: "Desfazer", exact: true }).click();
+  await registered.getByRole("button", { name: "Desfazer", exact: true }).click();
+  await expect(page.getByText("Ação desfeita.")).toBeVisible();
   await expect(verdict(page)).toContainText("Lu deve R$ 20,00 a Rafa");
 
   // Relatórios do ano com os dados lançados.
@@ -227,6 +253,9 @@ test("duas pessoas: veredito, modos, acerto, desfazer; relatórios com dados", a
   await bars.getByRole("button", { name: new RegExp(`^${otherMonth}`, "i") }).click();
   await expect(page).toHaveURL(new RegExp(`mes=${other}`));
   await expect(page.getByRole("heading", { name: new RegExp(`^Resumo de ${otherMonth}`, "i") })).toBeVisible();
+  await page.goto("/relatorios");
+  // As setas do teclado trocam o mês também nos Relatórios.
+  await pressMonthKey(page, "ArrowLeft", shiftMonth(ym, -1));
   await page.goto("/relatorios");
   const tableLink = page.getByRole("link", { name: new RegExp(`^${otherMonth}$`, "i") }).first();
   await expect(tableLink).toHaveAttribute("href", `/lancamentos?mes=${other}`);

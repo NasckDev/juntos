@@ -24,6 +24,8 @@ import { isUniqueViolation } from "./services/db-errors";
 export const UNDO_TTL_MS = 10 * 60 * 1000;
 
 export const UNDO_EXPIRED_MESSAGE = "Não dá mais para desfazer: o prazo de 10 minutos passou.";
+/** Desfazer a exclusão de uma meta quando outra, criada depois, já usa o mesmo nome. */
+export const GOAL_NAME_CLASH_MESSAGE = "Já existe uma meta com esse nome. Renomeie a outra para desfazer.";
 
 export interface UndoTokenInfo {
   readonly token: string;
@@ -120,12 +122,18 @@ async function restore(
   }
   await assertMember(tx, userId, spaceId, "editor");
   const table = RESTORE_TABLES[entity];
-  const rows = await tx
-    .update(table)
-    .set({ deletedAt: null })
-    .where(and(eq(table.spaceId, spaceId), inArray(table.id, list), isNotNull(table.deletedAt)))
-    .returning({ id: table.id });
-  return rows.length;
+  try {
+    const rows = await tx
+      .update(table)
+      .set({ deletedAt: null })
+      .where(and(eq(table.spaceId, spaceId), inArray(table.id, list), isNotNull(table.deletedAt)))
+      .returning({ id: table.id });
+    return rows.length;
+  } catch (error: unknown) {
+    // Só metas têm nome único entre as que voltam (`goals_space_name_uq`): outra foi criada com o mesmo nome.
+    if (entity === "goals" && isUniqueViolation(error)) throw new DomainError(GOAL_NAME_CLASH_MESSAGE);
+    throw error;
+  }
 }
 
 const RESTORE_TABLES = {

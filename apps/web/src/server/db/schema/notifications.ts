@@ -1,5 +1,17 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  date,
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { user } from "./auth";
 import { spaces } from "./spaces";
 
@@ -57,14 +69,34 @@ export const notifications = pgTable(
     body: text("body").notNull().default(""),
     href: text("href"),
     competence: date("competence"),
-    seenAt: timestamp("seen_at", { withTimezone: true }),
-    readAt: timestamp("read_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("notifications_space_dedupe_uq").on(t.spaceId, t.dedupeKey),
     index("notifications_user_idx").on(t.userId, t.createdAt),
     check("notifications_type_check", sql`${t.type} in ('late', 'due', 'budget', 'goal', 'invite', 'auto', 'import')`),
+  ],
+);
+
+/**
+ * Visto e lido de cada pessoa. Um aviso do espaço todo (`user_id` nulo) é visto e lido por cada membro na sua vez:
+ * abrir a central de uma pessoa não zera o sino da outra. Sem linha = nem visto nem lido.
+ */
+export const notificationReads = pgTable(
+  "notification_reads",
+  {
+    notificationId: uuid("notification_id")
+      .notNull()
+      .references(() => notifications.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    seenAt: timestamp("seen_at", { withTimezone: true }).notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+  },
+  (t) => [
+    primaryKey({ name: "notification_reads_pk", columns: [t.notificationId, t.userId] }),
+    index("notification_reads_user_idx").on(t.userId),
   ],
 );
 

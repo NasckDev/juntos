@@ -17,7 +17,7 @@ const { createCategory, deleteCategory } = await import("./categories");
 const { createGoal, deleteGoal, depositToGoal, updateGoal } = await import("./goals");
 const { undo } = await import("./undo");
 const { getDb } = await import("../db");
-const { budgets, categories, goalDeposits, recurrences, transactions } = await import("../db/schema");
+const { budgets, categories, goalDeposits, goals, recurrences, transactions } = await import("../db/schema");
 const { listBudgets } = await import("../services/budgets");
 const { listGoals } = await import("../services/goals");
 const { loadBudgetData, loadGoalsData } = await import("../planning-loaders");
@@ -25,6 +25,7 @@ const { addMember, createTestUser, migrateTestDb, sessionOf } = await import("..
 const { BUDGET_MESSAGES } = await import("../validators/budgets");
 const { CATEGORY_MESSAGES } = await import("../validators/categories");
 const { GOAL_MESSAGES } = await import("../validators/goals");
+const { GOAL_NAME_CLASH_MESSAGE } = await import("../undo");
 
 beforeAll(async () => {
   await migrateTestDb();
@@ -390,5 +391,30 @@ describe("metas", () => {
     expect(await listGoals(getDb(), rafa.home.id)).toEqual([]);
     unwrap(await undo({ token: deleted.undo.token }));
     expect(await listGoals(getDb(), rafa.home.id)).toHaveLength(1);
+  });
+
+  it("o banco também barra nome repetido; meta excluída libera o nome e o desfazer avisa se ele foi reusado", async () => {
+    const rafa = await createTestUser("Rafa");
+    sessionState.current = sessionOf(rafa);
+    const goal = { spaceId: rafa.home.id, icon: "viagem", target: 100_000, saved: 0, monthly: 0 } as const;
+    const { id } = unwrap(await createGoal({ ...goal, name: "Viagem" }));
+
+    // Mesmo sem passar pelo serviço (dois pedidos ao mesmo tempo), o índice único parcial segura o nome repetido.
+    await expect(
+      getDb().insert(goals).values({ spaceId: rafa.home.id, name: "VIAGEM", targetCents: 1_000 }),
+    ).rejects.toThrow();
+    // Dois pedidos juntos: um grava, o outro recebe a mensagem amigável.
+    const [a, b] = await Promise.all([createGoal({ ...goal, name: "Carro" }), createGoal({ ...goal, name: "carro" })]);
+    expect([a, b].filter((r) => r.ok)).toHaveLength(1);
+    expect([a, b].find((r) => !r.ok)).toMatchObject({ fieldErrors: { name: GOAL_MESSAGES.nameTaken } });
+
+    // Excluída, a meta não prende o nome; desfazer depois que outra usou o nome explica o que fazer.
+    const deleted = unwrap(await deleteGoal({ spaceId: rafa.home.id, id }));
+    unwrap(await createGoal({ ...goal, name: "viagem" }));
+    expect(await undo({ token: deleted.undo.token })).toEqual({ ok: false, error: GOAL_NAME_CLASH_MESSAGE });
+    expect((await listGoals(getDb(), rafa.home.id)).map((g) => g.name.toLowerCase()).sort()).toEqual([
+      "carro",
+      "viagem",
+    ]);
   });
 });

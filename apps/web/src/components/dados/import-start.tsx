@@ -87,7 +87,7 @@ export function ImportStart({ spaceId, canImport }: ImportStartProps) {
         >
           {reading ? "Lendo a planilha…" : "Escolher planilha (.xlsx)"}
         </Button>
-        <p className="mt-3 text-sm text-muted">Arquivo .xlsx de até 5 MB.</p>
+        <p className="mt-3 text-sm text-muted">Arquivo .xlsx de até 4 MB.</p>
         {reading ? (
           <p role="status" className="sr-only">
             Lendo a planilha…

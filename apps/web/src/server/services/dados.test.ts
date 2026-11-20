@@ -3,13 +3,18 @@ import ExcelJS from "exceljs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { buildMonthlySheets } from "../../../../../packages/core/test/fixtures/monthly-sheet";
 import { getDb } from "../db";
-import { importBatches, notifications, spaces, transactions } from "../db/schema";
+import { importBatches, notificationReads, notifications, spaces, transactions } from "../db/schema";
 import { DomainError } from "../result";
 import { gridsToXlsx, insertTxs } from "../test/finance-fixtures";
 import { createTestUser, migrateTestDb, type TestUser } from "../test/helpers";
 import { applyUndo } from "../undo";
 import type { ExportFilterData } from "../validators/export";
-import { IMPORT_MESSAGES, MAX_IMPORT_BYTES } from "../validators/import";
+import {
+  IMPORT_MESSAGES,
+  IMPORT_MULTIPART_OVERHEAD,
+  MAX_IMPORT_BYTES,
+  PLATFORM_BODY_LIMIT_BYTES,
+} from "../validators/import";
 import { buildExport, exportFileName, fileSlug } from "./export";
 import { csvAmount, csvText } from "./export-files";
 import { cancelImport, confirmImport, createImportBatch, findPendingImport, reviewExisting } from "./import";
@@ -205,7 +210,7 @@ describe("exportação", () => {
 });
 
 describe("importação: arquivo", () => {
-  it("só aceita .xlsx de verdade, até 5 MB", async () => {
+  it("só aceita .xlsx de verdade, até 4 MB", async () => {
     const zip = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0]);
     expect(checkUpload({ name: "gasto.xlsx", type: XLSX_MIME, size: 10 }, zip)).toBeNull();
     expect(checkUpload({ name: "gasto.xlsx", type: "", size: 10 }, zip)).toBeNull();
@@ -214,9 +219,14 @@ describe("importação: arquivo", () => {
     expect(checkUpload({ name: "gasto.xls", type: "application/vnd.ms-excel", size: 10 })).toBe(
       IMPORT_MESSAGES.notXlsx,
     );
+    expect(checkUpload({ name: "gasto.xlsx", type: XLSX_MIME, size: MAX_IMPORT_BYTES }, zip)).toBeNull();
     expect(checkUpload({ name: "gasto.xlsx", type: XLSX_MIME, size: MAX_IMPORT_BYTES + 1 })).toBe(
       IMPORT_MESSAGES.tooBig,
     );
+    expect(IMPORT_MESSAGES.tooBig).toBe("A planilha passa de 4 MB. Escolha um arquivo menor.");
+    // O maior envio aceito (arquivo + formulário) cabe no limite de corpo da Vercel: a pessoa vê a mensagem do app.
+    expect(MAX_IMPORT_BYTES).toBe(4 * 1024 * 1024);
+    expect(MAX_IMPORT_BYTES + IMPORT_MULTIPART_OVERHEAD).toBeLessThan(PLATFORM_BODY_LIMIT_BYTES);
     const fake = new TextEncoder().encode("não é zip");
     expect(checkUpload({ name: "gasto.xlsx", type: XLSX_MIME, size: fake.length }, fake)).toBe(IMPORT_MESSAGES.notXlsx);
     await expect(readWorkbook(zip)).rejects.toThrow();
@@ -279,6 +289,12 @@ describe("importação: planilha mensal (fixture fictícia gerada em memória)",
       .from(notifications)
       .where(and(eq(notifications.spaceId, owner.home.id), eq(notifications.type, "import")));
     expect(notice).toMatchObject({ title: "9 lançamentos importados", body: "Da planilha Gasto 2025.xlsx." });
+    // Chega como lido só para quem importou (os outros membros recebem como novo).
+    const reads = await getDb()
+      .select()
+      .from(notificationReads)
+      .where(eq(notificationReads.notificationId, notice?.id ?? ""));
+    expect(reads.map((r) => [r.userId, r.readAt !== null])).toEqual([[owner.id, true]]);
 
     await applyUndo(getDb(), owner.id, result.undo.token);
     expect(await liveTxs(owner.home.id)).toHaveLength(0);

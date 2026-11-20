@@ -5,6 +5,7 @@ import { categories, goalDeposits, goals, transactions } from "../db/schema";
 import { DomainError } from "../result";
 import { createUndoToken, type UndoTokenInfo } from "../undo";
 import { GOAL_MESSAGES, type UpdateGoalData } from "../validators/goals";
+import { isUniqueViolation } from "./db-errors";
 import type { GoalView } from "./finance-types";
 import type { Actor } from "./transactions";
 
@@ -55,6 +56,19 @@ async function assertNameFree(db: Executor, spaceId: string, name: string, excep
       and(eq(goals.spaceId, spaceId), isNull(goals.deletedAt), sql`lower(trim(${goals.name})) = ${name.toLowerCase()}`),
     );
   if (rows.some((row) => row.id !== exceptId)) throw new DomainError(GOAL_MESSAGES.nameTaken, "name");
+}
+
+/**
+ * A checagem acima dá a mensagem certa no caso comum; o índice único `goals_space_name_uq` segura dois pedidos ao
+ * mesmo tempo com o mesmo nome. Os dois casos chegam à pessoa com a mesma mensagem.
+ */
+async function withNameGuard<T>(write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (error: unknown) {
+    if (isUniqueViolation(error)) throw new DomainError(GOAL_MESSAGES.nameTaken, "name");
+    throw error;
+  }
 }
 
 async function reserveCategoryId(db: Executor): Promise<string> {
@@ -168,39 +182,43 @@ export async function createGoal(
   data: NewGoalData,
   today: IsoDate,
 ): Promise<{ id: string; transactionId: string | null }> {
-  return db.transaction(async (tx) => {
-    await assertNameFree(tx, spaceId, data.name, null);
-    const [row] = await tx
-      .insert(goals)
-      .values({
-        spaceId,
-        name: data.name,
-        icon: data.icon,
-        targetCents: data.target,
-        monthlyCents: data.monthly,
-        createdBy: actor.userId,
-      })
-      .returning();
-    if (!row) throw new Error("Falha ao gravar a meta.");
-    if (data.saved <= 0) return { id: row.id, transactionId: null };
-    const deposit = await recordDeposit(tx, actor, row, data.saved, today);
-    return { id: row.id, transactionId: deposit.transactionId };
-  });
+  return withNameGuard(() =>
+    db.transaction(async (tx) => {
+      await assertNameFree(tx, spaceId, data.name, null);
+      const [row] = await tx
+        .insert(goals)
+        .values({
+          spaceId,
+          name: data.name,
+          icon: data.icon,
+          targetCents: data.target,
+          monthlyCents: data.monthly,
+          createdBy: actor.userId,
+        })
+        .returning();
+      if (!row) throw new Error("Falha ao gravar a meta.");
+      if (data.saved <= 0) return { id: row.id, transactionId: null };
+      const deposit = await recordDeposit(tx, actor, row, data.saved, today);
+      return { id: row.id, transactionId: deposit.transactionId };
+    }),
+  );
 }
 
 /** Edita nome, tipo, valor da meta e valor por mês. A meta não pode ficar menor do que já foi guardado. */
 export async function updateGoal(db: Database, spaceId: string, data: UpdateGoalData): Promise<{ id: string }> {
-  return db.transaction(async (tx) => {
-    const row = await lockGoal(tx, spaceId, data.id);
-    await assertNameFree(tx, spaceId, data.name, row.id);
-    const saved = await savedInGoal(tx, row.id);
-    if (data.target < saved) throw new DomainError(GOAL_MESSAGES.savedOverTarget, "target");
-    await tx
-      .update(goals)
-      .set({ name: data.name, icon: data.icon, targetCents: data.target, monthlyCents: data.monthly })
-      .where(eq(goals.id, row.id));
-    return { id: row.id };
-  });
+  return withNameGuard(() =>
+    db.transaction(async (tx) => {
+      const row = await lockGoal(tx, spaceId, data.id);
+      await assertNameFree(tx, spaceId, data.name, row.id);
+      const saved = await savedInGoal(tx, row.id);
+      if (data.target < saved) throw new DomainError(GOAL_MESSAGES.savedOverTarget, "target");
+      await tx
+        .update(goals)
+        .set({ name: data.name, icon: data.icon, targetCents: data.target, monthlyCents: data.monthly })
+        .where(eq(goals.id, row.id));
+      return { id: row.id };
+    }),
+  );
 }
 
 /**

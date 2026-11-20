@@ -12,11 +12,43 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  TURBO_TELEMETRY_DISABLED: "1"
+
+# Os dois jobs rodam em paralelo (sem `needs`): um job pulado conta como aprovado na branch protegida, então o e2e
+# nunca depende do outro para aparecer como verde.
 jobs:
-  verificar:
+  qualidade:
+    name: "Qualidade: lint, tipos, testes e build"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: Varredura de privacidade
+        run: npm run privacidade
+      - name: Lint e formatação (Biome)
+        run: npx biome check .
+      - name: Tipos (core e app)
+        run: npm run typecheck
+      - name: Testes do core (cobertura mínima de 95 %)
+        run: npm run test -w @juntos/core
+      - name: Testes do app (servidor com PGlite em memória e componentes)
+        run: npm run test -w web
+      # Sem DATABASE_URL nem segredos: o env do app não exige as variáveis de execução durante o `next build`.
+      - name: Build de produção
+        run: npm run build
+
+  e2e:
     name: Privacidade e testes de ponta a ponta
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,12 +61,16 @@ jobs:
         run: npm run privacidade
       - name: Instalar o Chromium dos testes
         run: npx playwright install --with-deps chromium
+      # O servidor dos testes (apps/web/scripts/e2e-server.ts) sobe o `next dev` com PGlite num diretório temporário;
+      # nenhum segredo é usado (entra como convidado).
       - name: Testes de ponta a ponta (celular e computador)
-        run: npm test
+        run: npm run test:e2e -w web
       - name: Guardar o relatório se falhar
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: relatorio-playwright
-          path: playwright-report/
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
           retention-days: 7

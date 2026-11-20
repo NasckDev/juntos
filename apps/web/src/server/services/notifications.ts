@@ -18,6 +18,7 @@ import {
   NOTIFICATION_TYPES,
   type NotificationType,
   type NotifyPreferences,
+  notificationReads,
   notifications,
   spaceMembers,
   transactions,
@@ -35,6 +36,7 @@ import { competenceDate, toTxView } from "./transactions";
  * - O histórico é a tabela `notifications`, uma por espaço: cada aviso entra uma vez (índice único em
  *   `space_id + dedupe_key`) e ficam guardados os últimos 200. Todos os tipos são guardados; o que cada pessoa vê
  *   (lista, contador do sino, push) respeita os tipos que ela ligou em Ajustes > Avisos.
+ * - Visto e lido são de cada pessoa (`notification_reads`): no aviso do espaço todo, cada membro tem o seu.
  */
 
 /** Quantos avisos ficam no histórico de cada espaço. */
@@ -217,13 +219,19 @@ export interface HistoryItem extends StoredNotice {
   readonly read: boolean;
 }
 
+/** Avisos da pessoa no espaço: os dela e os do espaço todo. */
+export function addressedTo(spaceId: string, userId: string) {
+  return and(eq(notifications.spaceId, spaceId), or(isNull(notifications.userId), eq(notifications.userId, userId)));
+}
+
 /** Avisos que a pessoa pode ver no espaço (dela ou de todos), dos tipos ligados. */
 function visibleTo(spaceId: string, userId: string, types: readonly NotificationType[]) {
-  return and(
-    eq(notifications.spaceId, spaceId),
-    or(isNull(notifications.userId), eq(notifications.userId, userId)),
-    inArray(notifications.type, [...types]),
-  );
+  return and(addressedTo(spaceId, userId), inArray(notifications.type, [...types]));
+}
+
+/** Liga cada aviso ao visto e lido desta pessoa (sem linha = nem visto nem lido). */
+export function readsOf(userId: string) {
+  return and(eq(notificationReads.notificationId, notifications.id), eq(notificationReads.userId, userId));
 }
 
 export interface History {
@@ -250,61 +258,89 @@ export async function listHistory(
     shown.length === 0
       ? Promise.resolve([])
       : db
-          .select()
+          .select({ notice: notifications, readAt: notificationReads.readAt })
           .from(notifications)
+          .leftJoin(notificationReads, readsOf(userId))
           .where(
-            and(visibleTo(spaceId, userId, shown), filter === "nao-lidas" ? isNull(notifications.readAt) : undefined),
+            and(
+              visibleTo(spaceId, userId, shown),
+              filter === "nao-lidas" ? isNull(notificationReads.readAt) : undefined,
+            ),
           )
           .orderBy(desc(notifications.createdAt), desc(notifications.id))
           .limit(HISTORY_LIMIT),
     db
       .select({
-        unread: sql<number>`count(*) filter (where ${notifications.readAt} is null)`.mapWith(Number),
-        unseen: sql<number>`count(*) filter (where ${notifications.seenAt} is null)`.mapWith(Number),
+        unread: sql<number>`count(*) filter (where ${notificationReads.readAt} is null)`.mapWith(Number),
+        unseen: sql<number>`count(*) filter (where ${notificationReads.seenAt} is null)`.mapWith(Number),
       })
       .from(notifications)
+      .leftJoin(notificationReads, readsOf(userId))
       .where(visibleTo(spaceId, userId, types)),
   ]);
   return {
-    items: rows.map((row) => ({
-      id: row.id,
-      type: row.type,
-      dedupeKey: row.dedupeKey,
-      title: row.title,
-      body: row.body,
-      href: row.href,
-      createdAt: row.createdAt.toISOString(),
-      read: row.readAt !== null,
+    items: rows.map(({ notice, readAt }) => ({
+      id: notice.id,
+      type: notice.type,
+      dedupeKey: notice.dedupeKey,
+      title: notice.title,
+      body: notice.body,
+      href: notice.href,
+      createdAt: notice.createdAt.toISOString(),
+      read: readAt !== null,
     })),
     unread: counts?.unread ?? 0,
     unseen: counts?.unseen ?? 0,
   };
 }
 
-const mine = (spaceId: string, userId: string) =>
-  and(eq(notifications.spaceId, spaceId), or(isNull(notifications.userId), eq(notifications.userId, userId)));
+const at = (now: Date) => sql`${now.toISOString()}::timestamptz`;
 
-/** Abrir a central marca tudo como visto (o contador do sino zera). */
+/** Abrir a central marca como vistos, só para esta pessoa, os avisos que ela ainda não viu (o sino dela zera). */
 export async function markSeen(db: Executor, spaceId: string, userId: string, now = new Date()): Promise<number> {
+  // `insert ... select` exige as colunas na ordem da tabela.
+  const unseen = db
+    .select({
+      notificationId: notifications.id,
+      userId: sql<string>`${userId}::text`.as("user_id"),
+      seenAt: sql<Date>`${at(now)}`.as("seen_at"),
+      readAt: sql<Date | null>`null::timestamptz`.as("read_at"),
+    })
+    .from(notifications)
+    .leftJoin(notificationReads, readsOf(userId))
+    .where(and(addressedTo(spaceId, userId), isNull(notificationReads.notificationId)));
   const rows = await db
-    .update(notifications)
-    .set({ seenAt: now })
-    .where(and(mine(spaceId, userId), isNull(notifications.seenAt)))
-    .returning({ id: notifications.id });
+    .insert(notificationReads)
+    .select(unseen)
+    .onConflictDoNothing()
+    .returning({ id: notificationReads.notificationId });
   return rows.length;
 }
 
-/** "Marcar todas como lidas". */
+/** "Marcar todas como lidas", só para esta pessoa. */
 export async function markAllRead(db: Executor, spaceId: string, userId: string, now = new Date()): Promise<number> {
+  const unread = db
+    .select({
+      notificationId: notifications.id,
+      userId: sql<string>`${userId}::text`.as("user_id"),
+      seenAt: sql<Date>`coalesce(${notificationReads.seenAt}, ${at(now)})`.as("seen_at"),
+      readAt: sql<Date>`${at(now)}`.as("read_at"),
+    })
+    .from(notifications)
+    .leftJoin(notificationReads, readsOf(userId))
+    .where(and(addressedTo(spaceId, userId), isNull(notificationReads.readAt)));
   const rows = await db
-    .update(notifications)
-    .set({ readAt: now, seenAt: sql`coalesce(${notifications.seenAt}, ${now.toISOString()}::timestamptz)` })
-    .where(and(mine(spaceId, userId), isNull(notifications.readAt)))
-    .returning({ id: notifications.id });
+    .insert(notificationReads)
+    .select(unread)
+    .onConflictDoUpdate({
+      target: [notificationReads.notificationId, notificationReads.userId],
+      set: { readAt: at(now) },
+    })
+    .returning({ id: notificationReads.notificationId });
   return rows.length;
 }
 
-/** Abrir um aviso marca como lido; devolve o caminho para onde ele leva (ou `null` se não existe mais). */
+/** Abrir um aviso marca como lido (para esta pessoa); devolve o caminho para onde ele leva (ou `null` se não existe mais). */
 export async function markRead(
   db: Executor,
   spaceId: string,
@@ -313,12 +349,16 @@ export async function markRead(
   now = new Date(),
 ): Promise<{ href: string | null } | null> {
   const [row] = await db
-    .update(notifications)
-    .set({
-      readAt: sql`coalesce(${notifications.readAt}, ${now.toISOString()}::timestamptz)`,
-      seenAt: sql`coalesce(${notifications.seenAt}, ${now.toISOString()}::timestamptz)`,
-    })
-    .where(and(mine(spaceId, userId), eq(notifications.id, id)))
-    .returning({ href: notifications.href });
-  return row ? { href: row.href } : null;
+    .select({ id: notifications.id, href: notifications.href })
+    .from(notifications)
+    .where(and(addressedTo(spaceId, userId), eq(notifications.id, id)));
+  if (!row) return null;
+  await db
+    .insert(notificationReads)
+    .values({ notificationId: row.id, userId, seenAt: now, readAt: now })
+    .onConflictDoUpdate({
+      target: [notificationReads.notificationId, notificationReads.userId],
+      set: { readAt: sql`coalesce(${notificationReads.readAt}, excluded.read_at)` },
+    });
+  return { href: row.href };
 }

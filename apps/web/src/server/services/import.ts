@@ -14,7 +14,7 @@ import {
 } from "@juntos/core";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Database, Executor } from "../db";
-import { importBatches, notifications, spaceMembers, transactions, user } from "../db/schema";
+import { importBatches, notificationReads, notifications, spaceMembers, transactions, user } from "../db/schema";
 import { DomainError } from "../result";
 import { createUndoToken, type UndoTokenInfo } from "../undo";
 import { type ConfirmImportData, IMPORT_MESSAGES, type ImportDestination } from "../validators/import";
@@ -341,8 +341,7 @@ export async function confirmImport(
     const nowYm = todayParts(today).ym;
     const last = months[months.length - 1] ?? nowYm;
     const openMonth = last.slice(0, 4) === nowYm.slice(0, 4) ? nowYm : last;
-    const now = new Date();
-    await tx
+    const [notice] = await tx
       .insert(notifications)
       .values({
         spaceId,
@@ -351,10 +350,17 @@ export async function confirmImport(
         title: importedTitle(plan.create.length),
         body: `Da planilha ${pending.fileName}.`,
         href: `/lancamentos?mes=${openMonth}`,
-        seenAt: now,
-        readAt: now,
       })
-      .onConflictDoNothing({ target: [notifications.spaceId, notifications.dedupeKey] });
+      .onConflictDoNothing({ target: [notifications.spaceId, notifications.dedupeKey] })
+      .returning({ id: notifications.id });
+    // Quem importou já sabe: o aviso chega como lido só para essa pessoa; os outros membros recebem como novo.
+    if (notice) {
+      const now = new Date();
+      await tx
+        .insert(notificationReads)
+        .values({ notificationId: notice.id, userId: actor.userId, seenAt: now, readAt: now })
+        .onConflictDoNothing();
+    }
 
     const undo = await createUndoToken(tx, {
       userId: actor.userId,

@@ -135,7 +135,7 @@ Fábrica de conexão (`src/server/db/index.ts`): com `DATABASE_URL` usa Neon; se
 - **Contas fixas do mês** são materializadas de forma idempotente ao abrir um mês e pelo cron diário.
 - **Cron** (`vercel.json` → `/api/cron/diario`, protegido por `CRON_SECRET`): materializa o mês, gera avisos (deduplicados) e envia push e e-mail conforme as preferências.
 - **Push:** `web-push` com `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT`; o service worker recebe e mostra o aviso. Script `npm run chaves:vapid` gera as chaves.
-- **Importação:** upload só `.xlsx`, até 5 MB, lido no servidor com ExcelJS → `packages/core` → tela de revisão linha a linha → gravação numa transação, com lote reversível.
+- **Importação:** upload só `.xlsx`, até 4 MB (a Vercel recusa corpo acima de 4,5 MB), lido no servidor com ExcelJS → `packages/core` → tela de revisão linha a linha → gravação numa transação, com lote reversível.
 - **Exportação:** Route Handler gera `.xlsx` (ExcelJS, a partir do `workbook-model` do core), PDF (jsPDF) e CSV, com os filtros do protótipo.
 - **Exportar todos os dados** (JSON) e **excluir a conta** (carência de 30 dias) em Ajustes.
 

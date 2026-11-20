@@ -1,10 +1,10 @@
 import { DEFAULT_NOTICE_PREFS } from "@juntos/core";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { getDb } from "../db";
-import { DEFAULT_NOTIFY, notifications, spaceMembers } from "../db/schema";
+import { DEFAULT_NOTIFY, notificationReads, notifications, spaceMembers } from "../db/schema";
 import { insertTxs } from "../test/finance-fixtures";
-import { createTestUser, migrateTestDb, type TestUser } from "../test/helpers";
+import { addMember, createTestUser, migrateTestDb, type TestUser } from "../test/helpers";
 import {
   computeNotices,
   enabledTypes,
@@ -86,6 +86,48 @@ describe("avisos do espaço", () => {
 
     expect(await markAllRead(db, owner.home.id, owner.id)).toBe(2);
     expect((await listHistory(db, owner.home.id, owner.id, DEFAULT_NOTIFY, "todas")).unread).toBe(0);
+  });
+
+  it("visto e lido são de cada pessoa: o aviso do espaço todo continua novo para quem ainda não abriu", async () => {
+    const owner = await createTestUser("Rafa");
+    const lu = await createTestUser("Lu");
+    await addMember(owner.home.id, lu.id, "editor");
+    await seed(owner);
+    await syncNotices(getDb(), owner.home.id, TODAY);
+    const db = getDb();
+    const spaceId = owner.home.id;
+
+    expect(await markSeen(db, spaceId, owner.id)).toBe(3);
+    expect(await markSeen(db, spaceId, owner.id)).toBe(0);
+    expect(await listHistory(db, spaceId, lu.id, DEFAULT_NOTIFY, "todas")).toMatchObject({ unread: 3, unseen: 3 });
+
+    const [first] = (await listHistory(db, spaceId, lu.id, DEFAULT_NOTIFY, "todas")).items;
+    if (!first) throw new Error("sem aviso");
+    await markRead(db, spaceId, lu.id, first.id);
+    expect(await listHistory(db, spaceId, lu.id, DEFAULT_NOTIFY, "todas")).toMatchObject({ unread: 2, unseen: 2 });
+    expect(await listHistory(db, spaceId, owner.id, DEFAULT_NOTIFY, "todas")).toMatchObject({ unread: 3, unseen: 0 });
+
+    // "Marcar todas como lidas" de uma pessoa não mexe na outra; abrir de novo um aviso lido mantém a primeira leitura.
+    expect(await markAllRead(db, spaceId, owner.id)).toBe(3);
+    expect(await markAllRead(db, spaceId, owner.id)).toBe(0);
+    expect(await listHistory(db, spaceId, lu.id, DEFAULT_NOTIFY, "nao-lidas")).toMatchObject({ unread: 2 });
+    const luRead = () =>
+      db
+        .select({ readAt: notificationReads.readAt })
+        .from(notificationReads)
+        .where(and(eq(notificationReads.notificationId, first.id), eq(notificationReads.userId, lu.id)));
+    const [before] = await luRead();
+    await markRead(db, spaceId, lu.id, first.id, new Date("2030-01-01T00:00:00Z"));
+    const [after] = await luRead();
+    expect(after?.readAt).toEqual(before?.readAt);
+    expect(after?.readAt).not.toBeNull();
+
+    // Aviso de uma pessoa só não aparece (nem conta) para a outra.
+    await db
+      .insert(notifications)
+      .values({ spaceId, userId: owner.id, type: "invite", dedupeKey: "so-da-rafa", title: "Lu aceitou seu convite" });
+    expect((await listHistory(db, spaceId, owner.id, DEFAULT_NOTIFY, "todas")).unseen).toBe(1);
+    expect((await listHistory(db, spaceId, lu.id, DEFAULT_NOTIFY, "todas")).unseen).toBe(2);
   });
 
   it("quem não é do espaço não marca nada; o histórico guarda os últimos 200", async () => {
