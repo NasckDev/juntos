@@ -97,7 +97,7 @@ for await (const arquivo of arquivos(raiz)) {
 }
 
 if (problemas.length) {
-  console.error("Verificação de privacidade falhou:\n" + problemas.map((p) => `  - ${p}`).join("\n"));
+  console.error(`Verificação de privacidade falhou:\n${problemas.map((p) => `  - ${p}`).join("\n")}`);
   process.exit(1);
 }
 console.log("Verificação de privacidade: nenhum dado pessoal, segredo ou planilha encontrado.");
