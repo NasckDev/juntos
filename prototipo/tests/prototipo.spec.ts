@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 // Erros de console e violações de CSP fazem o teste falhar.
 function vigiarErros(page: Page): string[] {

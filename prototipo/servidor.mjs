@@ -1,7 +1,8 @@
 // Servidor estático local que aplica os cabeçalhos de segurança de cabecalhos.json.
 // Assim os testes rodam com a mesma Content-Security-Policy da produção.
-import { createServer } from "node:http";
+
 import { readFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 

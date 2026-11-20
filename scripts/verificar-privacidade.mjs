@@ -6,7 +6,20 @@ import { extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const raiz = fileURLToPath(new URL("..", import.meta.url));
-const IGNORAR = new Set([".git", "node_modules", "test-results", "playwright-report", ".vercel"]);
+const IGNORAR = new Set([
+  ".git",
+  "node_modules",
+  "test-results",
+  "playwright-report",
+  ".vercel",
+  ".next",
+  ".turbo",
+  ".data",
+  "coverage",
+  "dist",
+]);
+// Metadados de dependências trazem e-mails de autores de bibliotecas, que não são dados do projeto.
+const ARQUIVOS_IGNORADOS = new Set(["package-lock.json"]);
 const PROIBIDOS = new Set([".xlsx", ".xls", ".csv", ".env", ".pem", ".key", ".p12"]);
 const BINARIOS = new Set([".webp", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".woff", ".woff2"]);
 
@@ -27,7 +40,7 @@ const SEGREDOS = [
 
 async function* arquivos(pasta) {
   for (const item of await readdir(pasta, { withFileTypes: true })) {
-    if (IGNORAR.has(item.name)) continue;
+    if (IGNORAR.has(item.name) || ARQUIVOS_IGNORADOS.has(item.name)) continue;
     const caminho = join(pasta, item.name);
     if (item.isDirectory()) yield* arquivos(caminho);
     else yield caminho;
@@ -50,7 +63,8 @@ for await (const arquivo of arquivos(raiz)) {
   for (const encontrado of texto.matchAll(EMAIL)) {
     // Ignora trechos de data URI (base64) que por acaso formam algo com "@".
     if (encontrado[0].length > 80) continue;
-    if (!DOMINIOS_OK.test(encontrado[0])) problemas.push(`${nome}: e-mail fora dos domínios de exemplo (${encontrado[0]})`);
+    if (!DOMINIOS_OK.test(encontrado[0]))
+      problemas.push(`${nome}: e-mail fora dos domínios de exemplo (${encontrado[0]})`);
   }
 }
 

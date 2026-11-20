@@ -6,14 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": [
-      "**",
-      "!prototipo/index.html",
-      "!**/drizzle/**",
-      "!**/.next/**",
-      "!**/coverage/**",
-      "!**/dist/**"
-    ]
+    "includes": ["**", "!prototipo/index.html", "!**/drizzle", "!**/.next", "!**/coverage", "!**/dist", "!**/*.md"]
   },
   "formatter": {
     "enabled": true,
@@ -30,10 +23,7 @@
         "noConsole": {
           "level": "error",
           "options": {
-            "allow": [
-              "error",
-              "warn"
-            ]
+            "allow": ["error", "warn"]
           }
         }
       },
@@ -41,6 +31,11 @@
         "noUnusedImports": "error",
         "noUnusedVariables": "error"
       }
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
     }
   },
   "javascript": {
@@ -58,15 +53,12 @@
   },
   "overrides": [
     {
-      "includes": [
-        "prototipo/**",
-        "scripts/**",
-        "apps/web/scripts/**"
-      ],
+      "includes": ["prototipo/**", "scripts/**", "apps/web/scripts/**"],
       "linter": {
         "rules": {
           "suspicious": {
-            "noConsole": "off"
+            "noConsole": "off",
+            "noUndeclaredEnvVars": "off"
           }
         }
       }
