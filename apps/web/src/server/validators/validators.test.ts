@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { AVATAR_IDS } from "@/components/ui/avatar-art";
 import { zodFailure } from "../result";
 import { createInviteSchema, inviteTokenSchema } from "./members";
 import { updatePreferencesSchema, updateProfileSchema } from "./preferences";
@@ -79,12 +80,18 @@ describe("preferências e perfil", () => {
     expect(updatePreferencesSchema.safeParse({}).success).toBe(false);
   });
 
-  it("perfil: nome com 2 a 40 letras e avatar a1 a a8 ou nulo", () => {
+  it("perfil: nome com 2 a 40 letras e avatar de qualquer um dos 32 desenhos ou nulo", () => {
     expect(firstMessage(updateProfileSchema.safeParse({ name: "R" }))).toBe(
       "Digite seu nome, com pelo menos 2 letras.",
     );
     expect(updateProfileSchema.parse({ name: " Rafa ", avatar: "a3" })).toEqual({ name: "Rafa", avatar: "a3" });
     expect(updateProfileSchema.parse({ avatar: null })).toEqual({ avatar: null });
+    expect(AVATAR_IDS).toHaveLength(32);
+    for (const id of AVATAR_IDS) expect(updateProfileSchema.safeParse({ avatar: id }).success).toBe(true);
+    expect(updateProfileSchema.parse({ avatar: "b3" })).toEqual({ avatar: "b3" });
+    expect(updateProfileSchema.parse({ avatar: "c8" })).toEqual({ avatar: "c8" });
+    expect(updateProfileSchema.parse({ avatar: "a16" })).toEqual({ avatar: "a16" });
+    expect(updateProfileSchema.safeParse({ avatar: "a17" }).success).toBe(false);
     expect(updateProfileSchema.safeParse({ avatar: "data:image/png;base64,AAAA" }).success).toBe(false);
   });
 });

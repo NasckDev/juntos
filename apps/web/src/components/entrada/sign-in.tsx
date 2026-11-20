@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Logo } from "@/components/shell/logo";
 import { Button } from "@/components/ui/button";
 import { signInAsGuest, signInWithGoogle } from "@/lib/auth-client";
+import { DEFAULT_RETURN_PATH } from "@/lib/return-path";
 import { SignInArt } from "./sign-in-art";
 
 export interface SignInProps {
@@ -13,6 +14,8 @@ export interface SignInProps {
   googleEnabled: boolean;
   /** Voltou do Google com erro (`/entrar?erro=google`). */
   googleFailed?: boolean;
+  /** Para onde ir depois de entrar (já validado no servidor: só caminho interno). */
+  returnTo?: string;
 }
 
 const FEATURES = [
@@ -26,6 +29,13 @@ const FEATURES = [
 ] as const;
 
 type Pending = "google" | "guest" | null;
+
+/** Volta do Google com erro para a mesma tela, sem perder o destino pedido. */
+function googleErrorPath(returnTo: string): string {
+  const params = new URLSearchParams({ erro: "google" });
+  if (returnTo !== DEFAULT_RETURN_PATH) params.set("voltar", returnTo);
+  return `/entrar?${params.toString()}`;
+}
 
 function GoogleMark() {
   return (
@@ -54,7 +64,7 @@ function GoogleMark() {
 const GOOGLE_ERROR = "Não foi possível entrar com o Google. Tente de novo ou entre como convidado.";
 const NETWORK_ERROR = "Não foi possível entrar agora. Confira a conexão e tente de novo.";
 
-export function SignIn({ googleEnabled, googleFailed = false }: SignInProps) {
+export function SignIn({ googleEnabled, googleFailed = false, returnTo = DEFAULT_RETURN_PATH }: SignInProps) {
   const router = useRouter();
   const [pending, setPending] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(googleFailed ? GOOGLE_ERROR : null);
@@ -63,14 +73,15 @@ export function SignIn({ googleEnabled, googleFailed = false }: SignInProps) {
     setPending(kind);
     setError(null);
     try {
-      const result = kind === "google" ? await signInWithGoogle() : await signInAsGuest();
+      const result =
+        kind === "google" ? await signInWithGoogle(returnTo, googleErrorPath(returnTo)) : await signInAsGuest();
       if (!result.ok) {
         setError(result.error);
         setPending(null);
         return;
       }
       // O Google redireciona sozinho; o convidado entra direto no app.
-      if (kind === "guest") router.replace("/inicio");
+      if (kind === "guest") router.replace(returnTo);
     } catch {
       setError(NETWORK_ERROR);
       setPending(null);

@@ -128,7 +128,7 @@ export function CommandPalette({
                       >
                         {item.icon ? <span className="text-muted">{item.icon}</span> : null}
                         <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                        {item.hint ? <span className="num shrink-0 text-sm text-muted">{item.hint}</span> : null}
+                        {item.hint ? <span className="hv num shrink-0 text-sm text-muted">{item.hint}</span> : null}
                         {item.shortcut ? <Kbd>{item.shortcut}</Kbd> : null}
                       </Command.Item>
                     ))}

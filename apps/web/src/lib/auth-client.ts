@@ -20,12 +20,11 @@ const GENERIC_SIGN_IN_ERROR = "Não foi possível entrar agora. Tente de novo em
  * Se a pessoa estiver como convidado, os dados dela passam para a conta Google.
  * Só chame se o servidor disser que o Google está ligado (`features.google`).
  */
-export async function signInWithGoogle(callbackURL = "/inicio"): Promise<AuthResult> {
-  const { error } = await authClient.signIn.social({
-    provider: "google",
-    callbackURL,
-    errorCallbackURL: "/entrar?erro=google",
-  });
+export async function signInWithGoogle(
+  callbackURL = "/inicio",
+  errorCallbackURL = "/entrar?erro=google",
+): Promise<AuthResult> {
+  const { error } = await authClient.signIn.social({ provider: "google", callbackURL, errorCallbackURL });
   return error ? { ok: false, error: GENERIC_SIGN_IN_ERROR } : { ok: true };
 }
 

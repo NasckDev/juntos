@@ -37,6 +37,11 @@ const schema = z.object({
   ),
   RESEND_API_KEY: optionalText,
   EMAIL_FROM: optionalText,
+  /**
+   * Diretório do PGlite em arquivo (só sem DATABASE_URL, fora dos testes). Padrão: `.data/pglite`.
+   * Os testes ponta a ponta usam um diretório próprio, porque o PGlite em arquivo não aceita dois processos.
+   */
+  PGLITE_DIR: optionalText,
   /** Definidas pela própria Vercel; usadas só para montar links quando BETTER_AUTH_URL não existe. */
   VERCEL_PROJECT_PRODUCTION_URL: optionalText,
   VERCEL_URL: optionalText,

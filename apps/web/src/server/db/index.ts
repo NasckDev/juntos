@@ -16,8 +16,8 @@ import * as schema from "./schema";
  *   `neon-http` porque o HTTP só faz lotes não interativos, e o app precisa de transações de verdade
  *   (vincular convidado ao Google, aceitar convite, desfazer, importar planilha). O Node 22+ já traz
  *   `WebSocket` global, então não é preciso o pacote `ws`.
- * - Sem `DATABASE_URL`: PGlite (Postgres em WebAssembly), em `.data/pglite` no desenvolvimento ou em memória
- *   quando `NODE_ENV=test`.
+ * - Sem `DATABASE_URL`: PGlite (Postgres em WebAssembly), em `.data/pglite` no desenvolvimento (ou no diretório
+ *   de `PGLITE_DIR`, usado pelos testes ponta a ponta) ou em memória quando `NODE_ENV=test`.
  *
  * A conexão é criada na primeira chamada (nunca na importação), para o `next build` não abrir banco.
  */
@@ -36,7 +36,8 @@ interface Connection {
   readonly close: () => Promise<void>;
 }
 
-export const PGLITE_DIR = path.join(process.cwd(), ".data", "pglite");
+/** Diretório do PGlite em arquivo: `PGLITE_DIR` (absoluto ou relativo ao app) ou `.data/pglite`. */
+export const PGLITE_DIR = env.PGLITE_DIR ? path.resolve(env.PGLITE_DIR) : path.join(process.cwd(), ".data", "pglite");
 
 function connect(): Connection {
   if (env.DATABASE_URL) {

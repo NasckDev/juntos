@@ -29,6 +29,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // O Next 16 trava dois `next dev` na mesma pasta de saída; os testes ponta a ponta usam a própria
+  // (`NEXT_DIST_DIR=.next-e2e`, ver playwright.config.ts) para rodar ao lado do servidor de desenvolvimento.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  // No servidor dos testes, o selo de desenvolvimento do Next ficaria por cima da barra inferior nos prints.
+  ...(process.env.NEXT_DIST_DIR ? { devIndicators: false as const } : {}),
   poweredByHeader: false,
   reactStrictMode: true,
   // PGlite (desenvolvimento e testes) carrega arquivos WebAssembly do próprio pacote: não pode ser empacotado.

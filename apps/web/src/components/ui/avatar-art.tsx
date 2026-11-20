@@ -377,6 +377,9 @@ export const AVATAR_GROUPS: readonly { label: string; keys: readonly AvatarKey[]
   { label: "Objetos", keys: ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"] },
 ];
 
+/** Todas as chaves de avatar (pessoas a1–a16, animais b1–b8, objetos c1–c8): fonte única, usada também pelo servidor. */
+export const AVATAR_IDS: readonly AvatarKey[] = AVATAR_GROUPS.flatMap((group) => group.keys);
+
 export function isAvatarKey(value: string | null | undefined): value is AvatarKey {
   return Boolean(value) && (Object.hasOwn(PP, value as string) || Object.hasOwn(AVX, value as string));
 }

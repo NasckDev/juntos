@@ -14,6 +14,7 @@ import {
   DEFAULT_PREFS,
   FONT_SIZES,
   type FontPref,
+  normalizeTheme,
   type ThemePref,
 } from "@/lib/preferences";
 import { GalleryHome } from "./gallery-home";
@@ -28,7 +29,7 @@ import {
 } from "./gallery-sections";
 
 const THEMES = [
-  { value: "system", label: "Sistema" },
+  { value: "auto", label: "Automático" },
   { value: "light", label: "Claro" },
   { value: "dark", label: "Escuro" },
 ] as const satisfies readonly { value: ThemePref; label: string }[];
@@ -39,7 +40,7 @@ function readInitialPrefs(): AppearancePrefs {
   const root = document.documentElement;
   const theme = root.getAttribute("data-theme");
   return {
-    theme: theme === "light" || theme === "dark" ? theme : "system",
+    theme: normalizeTheme(theme),
     accent: (ACCENTS.find((a) => a.key === root.getAttribute("data-accent"))?.key ??
       "indigo") as AppearancePrefs["accent"],
     font: (FONT_SIZES.find((f) => f.key === root.getAttribute("data-font"))?.key ?? "normal") as FontPref,

@@ -32,6 +32,7 @@ export const viewport: Viewport = {
 /*
  * Aplica as preferências antes da primeira pintura (sem piscar o tema errado).
  * Lê localStorage["juntos:prefs"] = { theme, accent, font, hide } e aceita só valores conhecidos.
+ * theme "auto" (ou o antigo "system", ou ausente) segue o aparelho: não escreve data-theme.
  * Quem salva as preferências no servidor (user_preferences) espelha nesse item.
  */
 const PREFS_SCRIPT = `(function(){try{var p=JSON.parse(localStorage.getItem("juntos:prefs")||"{}"),d=document.documentElement;

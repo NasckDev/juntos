@@ -27,7 +27,7 @@ export async function updatePreferences(input: UpdatePreferencesInput): Promise<
   });
 }
 
-/** Nome e avatar (a1 a a8, ou `null` para as iniciais). */
+/** Nome e avatar (um dos `AVATAR_IDS`, ou `null` para as iniciais). */
 export async function updateProfile(input: UpdateProfileInput): Promise<ActionResult<{ saved: true }>> {
   return runAction(updateProfileSchema, input, async (patch) => {
     const user = await requireUser();

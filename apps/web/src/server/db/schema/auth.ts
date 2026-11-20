@@ -24,7 +24,7 @@ export const user = pgTable("user", {
   updatedAt: updatedAt(),
   /** Plugin `anonymous`: conta de convidado. */
   isAnonymous: boolean("is_anonymous").notNull().default(false),
-  /** Código do avatar escolhido (a1 a a8) ou nulo para usar as iniciais. */
+  /** Código do avatar escolhido (a1 a a16, b1 a b8, c1 a c8) ou nulo para usar as iniciais. */
   avatar: text("avatar"),
   /** Pedido de exclusão (LGPD): o cron apaga a conta 30 dias depois. */
   deletionRequestedAt: timestamp("deletion_requested_at", { withTimezone: true }),

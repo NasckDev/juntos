@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
+import type { AvatarKey } from "@/components/ui/avatar-art";
 import type { Executor } from "../db";
 import {
   budgets,
@@ -20,7 +21,7 @@ export const DELETION_GRACE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface ProfilePatch {
   readonly name?: string | undefined;
-  readonly avatar?: "a1" | "a2" | "a3" | "a4" | "a5" | "a6" | "a7" | "a8" | null | undefined;
+  readonly avatar?: AvatarKey | null | undefined;
 }
 
 export async function updateProfile(db: Executor, userId: string, patch: ProfilePatch): Promise<void> {

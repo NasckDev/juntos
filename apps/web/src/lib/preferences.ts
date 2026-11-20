@@ -5,7 +5,8 @@
 
 export const PREFS_STORAGE_KEY = "juntos:prefs";
 
-export type ThemePref = "system" | "light" | "dark";
+/** "auto" segue o aparelho. É o mesmo valor guardado no banco (`user_preferences.theme`). */
+export type ThemePref = "auto" | "light" | "dark";
 export type FontPref = "menor" | "normal" | "grande" | "maior";
 export type AccentKey =
   | "indigo"
@@ -27,7 +28,7 @@ export interface AppearancePrefs {
   hide: boolean;
 }
 
-export const DEFAULT_PREFS: AppearancePrefs = { theme: "system", accent: "indigo", font: "normal", hide: false };
+export const DEFAULT_PREFS: AppearancePrefs = { theme: "auto", accent: "indigo", font: "normal", hide: false };
 
 /** As 11 cores de destaque (`ACC` do protótipo): nome e amostra. */
 export const ACCENTS: readonly { key: AccentKey; label: string; swatch: string }[] = [
@@ -52,10 +53,28 @@ export const FONT_SIZES: readonly { key: FontPref; label: string }[] = [
   { key: "maior", label: "Maior" },
 ];
 
+/**
+ * Lê o tema guardado no navegador. Aceita o valor antigo `"system"` (de antes de o tema se chamar `"auto"`)
+ * e trata qualquer valor desconhecido como `"auto"`.
+ */
+export function normalizeTheme(value: unknown): ThemePref {
+  return value === "light" || value === "dark" ? value : "auto";
+}
+
+/** Preferências do servidor (`getAppContext().preferences`) no formato do `<html>`. */
+export function toAppearance(server: {
+  theme: ThemePref;
+  accent: AccentKey;
+  fontSize: FontPref;
+  hideValues: boolean;
+}): AppearancePrefs {
+  return { theme: server.theme, accent: server.accent, font: server.fontSize, hide: server.hideValues };
+}
+
 /** Aplica no `<html>` e guarda no localStorage para a próxima visita abrir sem piscar. */
 export function applyPreferences(prefs: AppearancePrefs): void {
   const root = document.documentElement;
-  if (prefs.theme === "system") root.removeAttribute("data-theme");
+  if (prefs.theme === "auto") root.removeAttribute("data-theme");
   else root.setAttribute("data-theme", prefs.theme);
   root.setAttribute("data-accent", prefs.accent);
   root.setAttribute("data-font", prefs.font);
